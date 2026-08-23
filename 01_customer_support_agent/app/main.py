@@ -13,8 +13,11 @@ def main() -> None:
         print(f"Requires human: {result.requires_human}")
         print(f"Customer request: {result.customer_request}")
 
-    except Exception as exc:
-        print(f"\nClassification failed: {exc}")
+    except ValueError as exc:
+        print(f"\nInvalid customer message: {exc}")
+
+    except RuntimeError as exc:
+        print(f"\nAI service error: {exc}")
 
 
 if __name__ == "__main__":
