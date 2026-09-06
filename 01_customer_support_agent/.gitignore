@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.py[cod]
+*.db
+.pytest_cache/
+.mypy_cache/
+*service-account*.json
+*firebase*credentials*.json
+*.pem
+*.key
+.coverage
+htmlcov/

@@ -1,11 +1,7 @@
-import os
-
-from dotenv import load_dotenv
+from app.settings import SETTINGS
 
 
-load_dotenv()
-
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_API_KEY = SETTINGS.openai_api_key
 
 if not OPENAI_API_KEY:
     raise RuntimeError(
