@@ -1,0 +1,117 @@
+{
+  "name": "MB02 Workflow 3 - Form AI Email",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "AI Business Inquiry Form",
+        "formDescription": "Submit your business inquiry and our AI assistant will process your request.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Name",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Email",
+              "fieldType": "email",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Business",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Message",
+              "fieldType": "textarea",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        0
+      ],
+      "id": "46720233-d4d7-4749-a9fc-fdb0ac5c27f8",
+      "name": "On form submission"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4.1-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=You are a professional AI business inquiry assistant.\n\nA potential customer submitted the following business inquiry:\n\nName: {{ $json.Name }}\nEmail: {{ $json.Email }}\nBusiness: {{ $json.Business }}\nMessage: {{ $json.Message }}\n\nWrite a professional and helpful email reply to this customer.\n\nRequirements:\n- Address the customer by name.\n- Acknowledge their business and inquiry.\n- Clearly respond to what they are asking about.\n- Explain briefly how AI automation could help when relevant.\n- Keep the response concise, friendly, and professional.\n- Do not invent prices, guarantees, delivery dates, or services that were not provided.\n- Do not include a subject line.\n- Output only the email body, with no JSON, markdown, labels, or extra commentary. - End the email with \"Best regards, Phililee AI Labs\". Do not use placeholders such as [Your Name] or [Your Company].  "
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        224,
+        0
+      ],
+      "id": "43c6c163-f109-4713-9def-bf597593086b",
+      "name": "Message a model"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('On form submission').item.json.Email }}",
+        "subject": "=AI Business Inquiry — {{ $('On form submission').item.json.Business }}",
+        "emailType": "text",
+        "message": "={{ $json.output[0].content[0].text }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        592,
+        0
+      ],
+      "id": "b1289f38-967e-4a65-a342-04ac69d58674",
+      "name": "Send a message"
+    }
+  ],
+  "connections": {
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "nodeGroups": [],
+  "tags": []
+}
