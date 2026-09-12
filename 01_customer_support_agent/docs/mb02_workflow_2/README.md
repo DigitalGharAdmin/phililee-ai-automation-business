@@ -94,8 +94,38 @@ identifiers.
 ## Evidence Files
 
 - `README.md`
-- `mb02_workflow_2_gmail_ai_classification_sheets.sanitized.json`
+- `mb02_workflow_2_gmail_ai_classification.sanitized.json`
 
 Together these files document the verified workflow and preserve its reusable node
 graph, classification prompt, JavaScript parsing logic, and sheet-column mapping.
 The original exported workflow remains local-only and uncommitted.
+
+## Reliability hardening and acceptance evidence
+
+Configuration was verified against the final local raw export. The following normal
+and controlled-failure results were manually tested and reported by the project
+owner; documentation closure does not rerun live services.
+
+External-service nodes use Retry On Fail with 3 attempts and a 2000 ms wait between
+attempts, then Stop Workflow after exhausted retries. The sanitized export makes
+the default maximum attempts and stop behavior explicit. The shared error workflow
+reference is replaced with `CONFIGURE_SHARED_ERROR_HANDLER`.
+
+- Normal Gmail-triggered execution: PASS.
+- OpenAI classification: PASS.
+- JavaScript parser: PASS.
+- Google Sheets logging: PASS.
+- Controlled parser failure: PASS.
+- Shared error notification: PASS.
+- Original email body and private payload excluded from alert: PASS.
+- Restored final normal execution: PASS.
+
+The deterministic JavaScript parser is not retried. Its invalid-JSON error is
+`throw new Error('Invalid JSON returned by OpenAI.');`, with no raw model output
+or temporary failure-test statement. OpenAI and Google Sheets are retried.
+
+Only `mb02_workflow_2_gmail_ai_classification.sanitized.json` is portfolio evidence. Raw exports remain ignored and local-only.
+Original node IDs are replaced by synthetic IDs; credentials, resource identifiers,
+and instance metadata are removed or replaced. Before import/use, configure local
+credentials and destination resources, select the imported Shared Error Handler in
+workflow settings, and test in a safe environment before activation.

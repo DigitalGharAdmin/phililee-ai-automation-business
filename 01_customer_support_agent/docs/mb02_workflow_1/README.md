@@ -95,7 +95,36 @@ processing status.
 
 ## Portfolio Evidence
 
-The exported n8n workflow JSON is included in this folder as reproducible evidence
+The sanitized n8n workflow JSON is included in this folder as reproducible evidence
 of the Webhook → AI → Google Sheets automation. The export shows the workflow nodes,
 connections, field mappings, and reusable structure without requiring credentials
 to be included in this documentation.
+
+## Reliability hardening and acceptance evidence
+
+Configuration was verified against the final local raw export. The following normal
+and controlled-failure results were manually tested and reported by the project
+owner; documentation closure does not rerun live services.
+
+External-service nodes use Retry On Fail with 3 attempts and a 2000 ms wait between
+attempts, then Stop Workflow after exhausted retries. The sanitized export makes
+the default maximum attempts and stop behavior explicit. The shared error workflow
+reference is replaced with `CONFIGURE_SHARED_ERROR_HANDLER`.
+
+- Normal Webhook -> OpenAI -> Google Sheets: PASS.
+- OpenAI retry hardening: PASS.
+- Google Sheets retry hardening: PASS.
+- Shared error workflow configured: PASS.
+- Production OpenAI failure notification: PASS.
+- Safe notification excluded submitted payloads and credentials: PASS.
+- One unique production request produced exactly one Sheets row: PASS.
+
+This test does not prove full exactly-once delivery under ambiguous remote-write
+failures. Production-grade idempotency or delivery deduplication can be added when
+required; the observed single row is not an exactly-once guarantee.
+
+Only `mb02_workflow_1_webhook_ai_sheets.sanitized.json` is portfolio evidence. Raw exports remain ignored and local-only.
+Original node IDs are replaced by synthetic IDs; credentials, resource identifiers,
+and instance metadata are removed or replaced. Before import/use, configure local
+credentials and destination resources, select the imported Shared Error Handler in
+workflow settings, and test in a safe environment before activation.

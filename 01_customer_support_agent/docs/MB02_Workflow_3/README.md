@@ -97,3 +97,32 @@ prompt, and safe Gmail expressions for reproducible portfolio evidence.
 
 `MB02 Workflow 3 - Form AI Email.json` is the original local-only export and must
 not be committed.
+
+## Reliability hardening and acceptance evidence
+
+Configuration was verified against the final local raw export. The following normal
+and controlled-failure results were manually tested and reported by the project
+owner; documentation closure does not rerun live services.
+
+External-service nodes use Retry On Fail with 3 attempts and a 2000 ms wait between
+attempts, then Stop Workflow after exhausted retries. The sanitized export makes
+the default maximum attempts and stop behavior explicit. The shared error workflow
+reference is replaced with `CONFIGURE_SHARED_ERROR_HANDLER`.
+
+- Normal Form -> OpenAI -> Gmail: PASS.
+- Production OpenAI failure: PASS.
+- Shared failure notification: PASS.
+- Safe notification excluded submitted form payload and secrets: PASS.
+- Model restored to `gpt-4.1-mini`: PASS.
+- Final production execution: PASS.
+- One unique form submission produced exactly one email: PASS.
+
+This test does not prove full exactly-once delivery under ambiguous remote-write
+failures. Production-grade idempotency or delivery deduplication can be added when
+required; the observed single email is not an exactly-once guarantee.
+
+Only `mb02_workflow_3_form_ai_email.sanitized.json` is portfolio evidence. Raw exports remain ignored and local-only.
+Original node IDs are replaced by synthetic IDs; credentials, resource identifiers,
+and instance metadata are removed or replaced. Before import/use, configure local
+credentials and destination resources, select the imported Shared Error Handler in
+workflow settings, and test in a safe environment before activation.

@@ -1,0 +1,51 @@
+{
+  "name": "MB02 Shared Error Handler",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "mb02-workflow-4-node-1",
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {
+        "sendTo": "alerts@example.invalid",
+        "subject": "=🚨 n8n Workflow Failure — {{ $json.workflow.name }}",
+        "emailType": "text",
+        "message": "=n8n workflow execution failed.\n\nWorkflow: {{ $json.workflow.name }}\nFailed node: {{ $json.execution.lastNodeExecuted }}\nExecution ID: {{ $json.execution.id }}\nExecution mode: {{ $json.execution.mode }}\nRetry of: {{ $json.execution.retryOf || 'None' }}\n\nError summary: Workflow execution failed. Review the execution details using the link below.\n\nExecution link: {{ $json.execution.url }}\n\nThis alert intentionally excludes submitted data, source email contents, request payloads, credentials, tokens, and raw upstream error messages.",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "mb02-workflow-4-node-2",
+      "name": "Send a message"
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "active": false
+}

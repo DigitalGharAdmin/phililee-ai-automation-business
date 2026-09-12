@@ -35,7 +35,7 @@
         0,
         0
       ],
-      "id": "46720233-d4d7-4749-a9fc-fdb0ac5c27f8",
+      "id": "mb02-workflow-3-node-1",
       "name": "On form submission"
     },
     {
@@ -43,8 +43,7 @@
         "modelId": {
           "__rl": true,
           "value": "gpt-4.1-mini",
-          "mode": "list",
-          "cachedResultName": "GPT-4.1-MINI"
+          "mode": "list"
         },
         "responses": {
           "values": [
@@ -62,8 +61,12 @@
         224,
         0
       ],
-      "id": "43c6c163-f109-4713-9def-bf597593086b",
-      "name": "Message a model"
+      "id": "mb02-workflow-3-node-2",
+      "name": "Message a model",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "maxTries": 3,
+      "onError": "stopWorkflow"
     },
     {
       "parameters": {
@@ -79,8 +82,12 @@
         592,
         0
       ],
-      "id": "b1289f38-967e-4a65-a342-04ac69d58674",
-      "name": "Send a message"
+      "id": "mb02-workflow-3-node-3",
+      "name": "Send a message",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "maxTries": 3,
+      "onError": "stopWorkflow"
     }
   ],
   "connections": {
@@ -107,11 +114,13 @@
       ]
     }
   },
-  "active": false,
   "settings": {
     "executionOrder": "v1",
-    "binaryMode": "separate"
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "CONFIGURE_SHARED_ERROR_HANDLER",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
   },
-  "nodeGroups": [],
-  "tags": []
+  "active": false
 }

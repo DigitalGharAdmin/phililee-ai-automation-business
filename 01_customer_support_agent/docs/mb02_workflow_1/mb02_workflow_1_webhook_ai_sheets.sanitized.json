@@ -4,7 +4,7 @@
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "mb02-ai-sheets",
+        "path": "configure-webhook-path",
         "options": {}
       },
       "type": "n8n-nodes-base.webhook",
@@ -13,7 +13,7 @@
         0,
         0
       ],
-      "id": "a6744aa2-8d8c-4b8c-9910-087ecfb0c688",
+      "id": "mb02-workflow-1-node-1",
       "name": "Webhook"
     },
     {
@@ -21,8 +21,7 @@
         "modelId": {
           "__rl": true,
           "value": "gpt-4.1-mini",
-          "mode": "list",
-          "cachedResultName": "GPT-4.1-MINI"
+          "mode": "list"
         },
         "responses": {
           "values": [
@@ -40,20 +39,24 @@
         224,
         0
       ],
-      "id": "69d1711f-6592-4f63-8e49-bf03f1c9b089",
-      "name": "Message a model"
+      "id": "mb02-workflow-1-node-2",
+      "name": "Message a model",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "maxTries": 3,
+      "onError": "stopWorkflow"
     },
     {
       "parameters": {
         "operation": "append",
         "documentId": {
           "__rl": true,
-          "value": "",
+          "value": "CONFIGURE_GOOGLE_DOCUMENT_ID",
           "mode": "id"
         },
         "sheetName": {
           "__rl": true,
-          "value": "",
+          "value": "CONFIGURE_GOOGLE_SHEET_ID",
           "mode": "id"
         },
         "columns": {
@@ -144,8 +147,12 @@
         592,
         0
       ],
-      "id": "ffb6cd31-2ca7-4144-b3e7-76f041bd5684",
-      "name": "Append row in sheet"
+      "id": "mb02-workflow-1-node-3",
+      "name": "Append row in sheet",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "maxTries": 3,
+      "onError": "stopWorkflow"
     }
   ],
   "connections": {
@@ -172,11 +179,13 @@
       ]
     }
   },
-  "active": false,
   "settings": {
     "executionOrder": "v1",
-    "binaryMode": "separate"
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "CONFIGURE_SHARED_ERROR_HANDLER",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
   },
-  "nodeGroups": [],
-  "tags": []
+  "active": false
 }

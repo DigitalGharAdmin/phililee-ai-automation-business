@@ -2,7 +2,7 @@
 
 The active FastAPI backend is `app/api.py`.
 
-From `C:\Users\User\Documents\AI_Freelance_Business\01_customer_support_agent`, start it with:
+From the `01_customer_support_agent` project directory, start it with:
 
 ```powershell
 python -m uvicorn app.api:app --reload
@@ -213,3 +213,21 @@ See `docs/deployment.md` for the production configuration contract, migration or
 TLS/proxy policy, Firebase and n8n smoke tests, custom-domain flow, and rollback
 guidance. CI validates the test suite and Alembic using isolated SQLite without
 production secrets. Public deployment remains a manual action; CI does not deploy.
+
+## MASTER PHASE 02 — Automation Foundation: COMPLETE
+
+Completed mini-projects:
+
+1. Webhook -> AI -> Google Sheets.
+2. Gmail -> AI Classification -> Google Sheets.
+3. Form -> AI -> Email.
+
+The reliability layer includes retries on appropriate external-service nodes, a
+reusable Shared Error Handler, safe Gmail failure alerts, controlled failure tests,
+restored normal execution tests, and sanitized portfolio evidence. Manual test
+results were reported by the project owner; exported configuration is verified
+locally. These tests do not establish full exactly-once delivery guarantees.
+
+MASTER PHASE 01: COMPLETE. MASTER PHASE 03 remains planned.
+Next roadmap system: `02_lead_generation_agent` — Commercial AI Lead Qualification
+and Follow-up MVP.
