@@ -1,6 +1,7 @@
 """Validated lead input and deterministic qualification response contracts."""
 
 from enum import StrEnum
+from datetime import datetime, timezone
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
@@ -113,3 +114,26 @@ class LeadQualification(BaseModel):
     recommended_action: RecommendedAction
     score_breakdown: ScoreBreakdown
     reasons: list[str]
+
+
+class LeadStored(LeadCreate):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    lead_score: int = Field(ge=0, le=100)
+    qualification: Qualification
+    priority: Priority
+    recommended_action: RecommendedAction
+    created_at: datetime
+    updated_at: datetime
+
+    @field_validator("created_at", "updated_at")
+    @classmethod
+    def timestamps_are_utc(cls, value: datetime) -> datetime:
+        # SQLite drops timezone information; all stored timestamps originate in UTC.
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
+class LeadCaptureResponse(BaseModel):
+    created: bool
+    lead: LeadStored

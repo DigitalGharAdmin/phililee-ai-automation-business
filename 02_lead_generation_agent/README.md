@@ -2,15 +2,16 @@
 
 Phililee AI Labs' commercial lead qualification foundation for small and medium
 businesses receiving sales inquiries from websites, forms, ads, email, and referrals.
-Build 1 validates structured prospect information and returns an explainable,
-deterministic preliminary score. No external AI API is required.
+Build 2 adds persistent lead capture, stored deterministic qualification, duplicate
+prevention, and lead retrieval/listing. The Build 1 rubric remains unchanged.
+No external AI API is required.
 
 ## Build 1 scope and architecture
 
 `POST /leads/qualify` -> `LeadCreate` validation -> `score_lead()` -> `LeadQualification`.
 
-The implementation contains only a FastAPI entry point, Pydantic contracts, a pure
-scoring function, and product metadata settings. Requests are processed in memory.
+The original qualification endpoint uses a pure scoring function and does not
+access storage. Capture endpoints now use SQLAlchemy sessions and a SQLite table.
 `recommended_action` is a recommendation; it does not trigger any action.
 
 ```text
@@ -18,7 +19,9 @@ app/
   api.py       # HTTP endpoints
   models.py    # input, enum, and response contracts
   scoring.py   # deterministic commercial rubric
-  settings.py  # title/version; no secret configuration
+  settings.py  # title/version and DATABASE_URL
+  database.py  # engine, session factory, base and session dependency
+  db_models.py # Lead ORM table
 tests/
   test_api.py
   test_models.py
@@ -99,7 +102,10 @@ python -m venv .venv
 
 If `.venv` already exists, reuse it. No activation is required with these commands.
 Use this project's environment rather than the Customer Support Agent environment.
-Build 1 requires no environment variables; `.env.example` documents that fact.
+The default is `sqlite:///./lead_generation.db`, relative to the project working
+directory. Optionally set `$env:DATABASE_URL` before starting the server.
+Configuration reads process environment variables at import; `.env` is not loaded
+automatically. `.env.example` contains only the safe local example.
 Stop the development server with Ctrl+C when finished.
 
 Swagger UI: <http://127.0.0.1:8000/docs>.
@@ -135,7 +141,8 @@ Example request using fictional data:
 
 This request produces score 100, `hot`, `high`, and `contact`, with breakdown
 `service_interest: 20`, `budget: 25`, `timeline: 25`, `company_size: 15`, and
-`message_quality: 15`. All responses include `reasons`.
+`message_quality: 15`. Qualification responses include `reasons`. Capture/retrieval responses contain
+stored summary fields instead.
 
 Malformed or invalid requests return HTTP 422 using FastAPI/Pydantic's standard
 `detail` list. Validation errors may include rejected input values, so treat error
@@ -155,8 +162,9 @@ API calls.
 
 ## Current limitations
 
-Build 1 does not yet include AI/LLM scoring, persistence, deduplication, n8n
-orchestration, CRM/Sheets logging, automated follow-up, or human approval.
+Build 2 still does not include AI/LLM scoring, n8n orchestration, Gmail automation,
+Google Sheets/CRM sync, automated follow-up, human approval, production migrations,
+or deployment.
 It also has no authentication, Firebase, PostgreSQL, or deployment configuration.
 It is a local foundation, not a public production service.
 
@@ -167,7 +175,74 @@ are not verified. Commercial fit should be reviewed before a business decision.
 
 ## Next build
 
-Build 2 — Lead Capture, Persistence, and Deduplication.
+Build 3 — AI Qualification and Structured Scoring.
 
 Later builds may add AI qualification, orchestration, routing, approval, and
 follow-up integrations. Those capabilities are outside this build.
+
+## Build 2 persistence architecture
+
+`POST /leads` -> input validation -> deterministic scoring -> hashed identity lookup
+-> SQLAlchemy `Lead` row -> `LeadCaptureResponse`.
+
+`app/database.py` owns the engine, session factory and per-request session cleanup.
+Tables are created during FastAPI startup with `Base.metadata.create_all`. Importing
+or calling `/leads/qualify` alone does not create database tables. Schema migrations
+are deferred to production hardening; `create_all` does not migrate existing tables.
+
+The Lead table stores server-generated UUID text IDs, all normalized input fields,
+score, qualification, priority, recommended action, unique indexed `dedup_key`, and
+creation/update timestamps. Enums are stored as strings. Timestamps originate in UTC;
+SQLite drops timezone information, so API serialization restores UTC explicitly.
+Breakdown/reasons are not stored because capture/retrieval needs only the original
+qualification summary. Existing stored scores are not recalculated on reads.
+
+## Duplicate identity and behavior
+
+Capture normalizes email by trimming and lowercasing the whole address. Service
+interest uses its enum value, or `unspecified` when omitted/null. The key is the
+SHA-256 hex digest of `normalized_email + "|" + normalized_service_interest`.
+The raw email is not embedded in the key. This hash is an internal lookup mechanism,
+not anonymization; guessed identities can still be hashed. It is never returned.
+
+The database's unique index is the final authority. If concurrent inserts race,
+the losing request rolls back after `IntegrityError`, fetches the winning row and
+returns it as a duplicate. Unrelated database failures return a generic HTTP 500.
+
+Duplicates do not change the existing message, score, other fields, or timestamps.
+The same email with a different service is a new lead. Missing service and `other`
+are different identities. Build 1 email normalization remains unchanged for the
+non-persistent qualification endpoint.
+
+## Capture and retrieval endpoints
+
+| Endpoint | Success | Behavior |
+| --- | --- | --- |
+| POST /leads | 201 new; 200 duplicate | Same LeadCreate input as qualify; returns `{created, lead}` |
+| GET /leads/{lead_id} | 200 | Returns one LeadStored; missing ID returns 404 |
+| GET /leads?limit=50 | 200 | Returns an array, newest first; ties ordered by ID |
+
+`LeadStored` includes ID, all input fields, score, qualification, priority,
+recommended action, created_at and updated_at. It excludes `dedup_key`, breakdown,
+and reasons. The list limit defaults to 50 and accepts integers 1?100. Invalid
+input or limits return 422. There is no filtering, search, or offset pagination.
+Unexpected database failures return `{"detail":"Database operation failed."}`
+with status 500 and no SQL, paths, stack traces, or dedup hashes.
+
+These unauthenticated local endpoints return prospect data; keep the development
+server bound to loopback. No email or follow-up is triggered by capture.
+
+## Database tests and local reset
+
+The full pytest command above preserves all Build 1 tests and adds Build 2 tests.
+Each persistence test uses a temporary SQLite file and overrides both the database
+session dependency and startup engine. Tests never require the developer database.
+Coverage includes real unique-constraint violations, simulated stale-read race
+recovery, duplicate immutability, retrieval after reconnecting, safe database errors,
+and non-persistent qualification.
+
+To reset disposable local development data: stop the server, delete only the local
+`lead_generation.db` in this project, and restart the app. If DATABASE_URL points
+elsewhere, identify that test database explicitly before deleting anything. Reset
+permanently removes locally captured leads. There is no destructive reset endpoint.
+Database files and their SQLite journal/WAL sidecars are ignored by Git.
