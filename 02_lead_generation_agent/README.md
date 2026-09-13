@@ -4,7 +4,8 @@ Phililee AI Labs' commercial lead qualification foundation for small and medium
 businesses receiving sales inquiries from websites, forms, ads, email, and referrals.
 Build 2 adds persistent lead capture, stored deterministic qualification, duplicate
 prevention, and lead retrieval/listing. The Build 1 rubric remains unchanged.
-No external AI API is required.
+Build 3 adds optional structured AI assessment and deterministic reconciliation.
+An API key is optional; the application starts and provides fallback without it.
 
 ## Build 1 scope and architecture
 
@@ -162,7 +163,7 @@ API calls.
 
 ## Current limitations
 
-Build 2 still does not include AI/LLM scoring, n8n orchestration, Gmail automation,
+Build 3 still does not include n8n orchestration, Gmail automation,
 Google Sheets/CRM sync, automated follow-up, human approval, production migrations,
 or deployment.
 It also has no authentication, Firebase, PostgreSQL, or deployment configuration.
@@ -175,9 +176,9 @@ are not verified. Commercial fit should be reviewed before a business decision.
 
 ## Next build
 
-Build 3 — AI Qualification and Structured Scoring.
+Build 4 — n8n Routing, Human Approval, Follow-up Email, and CRM/Google Sheets Logging.
 
-Later builds may add AI qualification, orchestration, routing, approval, and
+Later builds may add orchestration, routing, approval, and
 follow-up integrations. Those capabilities are outside this build.
 
 ## Build 2 persistence architecture
@@ -224,7 +225,7 @@ non-persistent qualification endpoint.
 
 `LeadStored` includes ID, all input fields, score, qualification, priority,
 recommended action, created_at and updated_at. It excludes `dedup_key`, breakdown,
-and reasons. The list limit defaults to 50 and accepts integers 1?100. Invalid
+and reasons. The list limit defaults to 50 and accepts integers 1-100. Invalid
 input or limits return 422. There is no filtering, search, or offset pagination.
 Unexpected database failures return `{"detail":"Database operation failed."}`
 with status 500 and no SQL, paths, stack traces, or dedup hashes.
@@ -246,3 +247,94 @@ To reset disposable local development data: stop the server, delete only the loc
 elsewhere, identify that test database explicitly before deleting anything. Reset
 permanently removes locally captured leads. There is no destructive reset endpoint.
 Database files and their SQLite journal/WAL sidecars are ignored by Git.
+
+## Build 3: optional AI qualification
+
+Lead Input -> Deterministic Scoring -> AI Structured Assessment -> Reconciliation
+-> Final Qualification.
+
+The numerical `deterministic.lead_score` remains the source of truth. AI has no
+numeric score field and cannot overwrite it. AI assessment validates intent
+strength, business fit, urgency, decision readiness, recommended action, summary
+(1-500 characters), up to 8 key signals (1-160 characters each), and up to 8 risk
+flags (1-80 characters each). Extra fields, invalid enums and oversized output
+are rejected. Structured validation does not prove factual accuracy.
+
+The final state is computed in code, independently of the AI-recommended action:
+
+- Low intent OR poor fit lowers qualification by at most one level.
+- High intent AND good/excellent fit AND ready AND no risk flags raises it by at
+  most one level.
+- Other assessments keep the baseline. Cold cannot jump to hot; hot cannot fall
+  to cold. Weak signals take precedence over strong signals.
+- Final cold means low/nurture; warm means medium/review; hot means high/contact.
+- Failure preserves all deterministic results with `ai_status: fallback` and a
+  null assessment. Final reasons use controlled text, not raw provider errors.
+
+`POST /leads/qualify-ai` accepts LeadCreate, returns HTTP 200 LeadAIQualification,
+and never persists a lead. Its response includes `deterministic`, `ai_assessment`,
+`ai_status`, `final_qualification`, `final_priority`, `final_recommended_action`,
+and `final_reasons`. Invalid input still returns 422.
+
+`POST /leads?use_ai=true` opts new captures into assessment. Default `use_ai=false`
+preserves deterministic capture and existing fields, adding null AI fields and
+final fields equal to the baseline. AI failure still creates a lead (201) using
+fallback. Duplicates return the original record (200, created=false), skip AI,
+and never update it. Concurrent requests that both pass the initial lookup may
+both call AI before one loses the database uniqueness race; this build does not
+provide cross-request AI call deduplication.
+
+Stored records retain original deterministic score/labels and add nullable
+`ai_status`, a validated `ai_assessment` JSON object, and the three final fields.
+JSON preserves the bounded signals/risk lists without extra tables. GET/list
+return those fields, never prompts, raw responses/errors, or dedup keys. Older
+response objects with missing AI/final fields default to deterministic labels;
+this does not migrate old database tables.
+
+## AI configuration, privacy and failures
+
+Set optional `OPENAI_API_KEY` in the process environment before starting the app.
+`OPENAI_MODEL` defaults to `gpt-4.1-mini`. `.env` is not auto-loaded. Keep real
+credentials out of shell history and repository files. An empty key causes local
+fallback without constructing a client. No credentials are required to run tests.
+
+The OpenAI SDK uses Responses structured output, a 15-second request timeout,
+zero retries, a 1200-output-token cap, and `store=False`. Authentication errors,
+timeouts, rate limits, service errors, refusal, incomplete output, malformed
+output and unexpected SDK exceptions all produce deterministic fallback. No raw
+payloads or provider errors are logged by this module. SDK timeout controls network
+operations; it is not a strict whole-request wall-clock deadline.
+
+Only company, message, source, service interest, budget, timeline and company size
+are sent. Structured name/email fields, IDs, dedup hashes, timestamps and database
+metadata are excluded. Free-text company/message fields can themselves contain
+personal data; this is field minimization, not automatic redaction. Avoid entering
+unnecessary personal information. The prompt treats lead content as untrusted,
+forbids invented facts and sensitive-trait inferences, and requests commercial
+signals only. Generated prose is advisory, not verified fact. `store=False` does
+not imply zero retention under all provider policies.
+
+Implementation references: [OpenAI Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
+and [GPT-4.1 mini](https://developers.openai.com/api/docs/models/gpt-4.1-mini).
+
+## Build 3 local database schema change
+
+`create_all` does not add columns to an existing Build 2 database. Startup checks
+for missing columns and stops with a generic schema message instead of modifying
+or deleting data. Before switching a disposable local database: stop the server,
+back up/export anything needed, explicitly delete the intended local
+`lead_generation.db`, then restart to create the new schema. Alternatively set
+DATABASE_URL to a new local SQLite file and retain the old file for later migration.
+No database is automatically reset; production migrations remain a later build.
+
+## Build 3 verification
+
+Run the same full pytest command above. Tests use fake assessment clients and an
+in-memory HTTP transport for the installed SDK; they never contact OpenAI. They
+cover reconciliation bounds, fallback categories, request privacy, optional capture,
+duplicate skipping, stored fields, and non-destructive old-schema rejection.
+A global test fixture clears the key and blocks real OpenAI client construction.
+
+No paid smoke test runs automatically. For a deliberately manual check, configure
+the key securely, start the local server, and use Swagger POST /leads/qualify-ai
+with fictional lead data. This may incur API charges and does not persist a lead.

@@ -5,11 +5,12 @@ from hashlib import sha256
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
+from sqlalchemy import select, inspect
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.models import LeadCaptureResponse, LeadCreate, LeadQualification, LeadStored
+from app.models import LeadAIQualification, LeadCaptureResponse, LeadCreate, LeadQualification, LeadStored
+from app.ai_qualification import qualify_with_ai
 from app.database import Base, engine, get_db
 from app.db_models import Lead
 from app.scoring import score_lead
@@ -17,6 +18,11 @@ from app.settings import APP_TITLE, APP_VERSION
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    inspector = inspect(engine)
+    if inspector.has_table("leads"):
+        columns = {column["name"] for column in inspector.get_columns("leads")}
+        if not set(Lead.__table__.columns.keys()) <= columns:
+            raise RuntimeError("Local database schema is outdated. Back up data and follow the Build 3 README reset instructions.")
     Base.metadata.create_all(engine)
     yield
 
@@ -39,9 +45,14 @@ def qualify(lead: LeadCreate) -> LeadQualification:
     return score_lead(lead)
 
 
+@app.post("/leads/qualify-ai", response_model=LeadAIQualification)
+def qualify_ai(lead: LeadCreate):
+    return qualify_with_ai(lead)
+
+
 @app.post("/leads", response_model=LeadCaptureResponse, status_code=201,
           responses={200: {"model": LeadCaptureResponse, "description": "Existing lead"}})
-def capture(lead: LeadCreate, response: Response, db: Session = Depends(get_db)):
+def capture(lead: LeadCreate, response: Response, use_ai: bool = False, db: Session = Depends(get_db)):
     qualification = score_lead(lead)
     email = str(lead.email).strip().lower()
     key = sha256(f"{email}|{lead.service_interest or 'unspecified'}".encode("utf-8")).hexdigest()
@@ -50,10 +61,16 @@ def capture(lead: LeadCreate, response: Response, db: Session = Depends(get_db))
     if existing is not None:
         response.status_code = 200
         return LeadCaptureResponse(created=False, lead=LeadStored.model_validate(existing))
+    combined = qualify_with_ai(lead, qualification) if use_ai else None
     row = Lead(
         **(lead.model_dump(mode="json") | {"email": email}),
         **qualification.model_dump(mode="json", exclude={"score_breakdown", "reasons"}),
         dedup_key=key,
+        ai_status=combined.ai_status if combined else None,
+        ai_assessment=combined.ai_assessment.model_dump(mode="json") if combined and combined.ai_assessment else None,
+        final_qualification=combined.final_qualification if combined else qualification.qualification,
+        final_priority=combined.final_priority if combined else qualification.priority,
+        final_recommended_action=combined.final_recommended_action if combined else qualification.recommended_action,
     )
     db.add(row)
     try:

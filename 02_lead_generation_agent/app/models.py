@@ -2,8 +2,9 @@
 
 from enum import StrEnum
 from datetime import datetime, timezone
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 
 class LeadSource(StrEnum):
@@ -116,6 +117,29 @@ class LeadQualification(BaseModel):
     reasons: list[str]
 
 
+class AILeadAssessment(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    intent_strength: Literal["low", "medium", "high"]
+    business_fit: Literal["poor", "fair", "good", "excellent"]
+    urgency: Literal["low", "medium", "high"]
+    decision_readiness: Literal["exploring", "considering", "ready"]
+    ai_recommended_action: RecommendedAction
+    summary: str = Field(min_length=1, max_length=500)
+    key_signals: list[Annotated[str, Field(min_length=1, max_length=160)]] = Field(max_length=8)
+    risk_flags: list[Annotated[str, Field(min_length=1, max_length=80)]] = Field(max_length=8)
+
+
+class LeadAIQualification(BaseModel):
+    deterministic: LeadQualification
+    ai_assessment: AILeadAssessment | None
+    ai_status: Literal["success", "fallback"]
+    final_qualification: Qualification
+    final_priority: Priority
+    final_recommended_action: RecommendedAction
+    final_reasons: list[str]
+
+
 class LeadStored(LeadCreate):
     model_config = ConfigDict(from_attributes=True)
 
@@ -126,6 +150,18 @@ class LeadStored(LeadCreate):
     recommended_action: RecommendedAction
     created_at: datetime
     updated_at: datetime
+    ai_status: Literal["success", "fallback"] | None = None
+    ai_assessment: AILeadAssessment | None = None
+    final_qualification: Qualification | None = None
+    final_priority: Priority | None = None
+    final_recommended_action: RecommendedAction | None = None
+
+    @model_validator(mode="after")
+    def deterministic_defaults(self):
+        self.final_qualification = self.final_qualification or self.qualification
+        self.final_priority = self.final_priority or self.priority
+        self.final_recommended_action = self.final_recommended_action or self.recommended_action
+        return self
 
     @field_validator("created_at", "updated_at")
     @classmethod
