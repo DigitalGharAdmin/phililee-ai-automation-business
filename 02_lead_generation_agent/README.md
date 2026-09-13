@@ -166,10 +166,10 @@ API calls.
 
 ## Current limitations
 
-Build 3 still does not include n8n orchestration, Gmail automation,
-Google Sheets/CRM sync, automated follow-up, human approval, production migrations,
-or deployment.
-It also has no authentication, Firebase, PostgreSQL, or deployment configuration.
+Build 4 provides n8n routing, human approval, Gmail follow-up and Google Sheets
+CRM templates. Manual n8n acceptance is pending. Production migrations and
+deployment are not included.
+The FastAPI backend still has no authentication, Firebase, PostgreSQL, or deployment configuration.
 It is a local foundation, not a public production service.
 
 The rubric is a preliminary heuristic, not a verified prediction of conversion.
@@ -179,10 +179,10 @@ are not verified. Commercial fit should be reviewed before a business decision.
 
 ## Next build
 
-Build 4 — n8n Routing, Human Approval, Follow-up Email, and CRM/Google Sheets Logging.
+Build 5 — Reliability Tests, Demo Evidence, and Portfolio Packaging.
 
-Later builds may add orchestration, routing, approval, and
-follow-up integrations. Those capabilities are outside this build.
+Build 4 templates must pass manual acceptance before portfolio delivery. Later
+production hardening may add transactional messaging and broader CRM integrations.
 
 ## Build 2 persistence architecture
 
@@ -342,3 +342,20 @@ A global test fixture clears the key and blocks real OpenAI client construction.
 No paid smoke test runs automatically. For a deliberately manual check, configure
 the key securely, start the local server, and use Swagger POST /leads/qualify-ai
 with fictional lead data. This may incur API charges and does not persist a lead.
+
+## Build 4: n8n routing and approved follow-up
+
+Implementation/static validation: COMPLETE. Manual n8n acceptance: PENDING.
+
+Lead source -> n8n Webhook -> FastAPI /leads?use_ai=true -> stored qualification
+-> Google Sheets CRM -> human approval -> Gmail -> CRM status update.
+
+The backend and its Build 1-3 behavior are unchanged. Workflow A deterministically
+routes final qualification and reuses CRM rows by lead_id. Workflow B fetches the
+stored lead, checks warm/hot eligibility and CRM delivery state, and uses a fixed
+email template only after approval. Cold and rejected paths cannot send email.
+
+See [Build 4 setup, safety limits and acceptance](n8n/README.md). The inactive JSON
+templates require local credential, node and connectivity confirmation. Validation
+used offline simulations and the existing Python tests; no live Gmail, Sheets,
+OpenAI or n8n action was performed. No exactly-once delivery guarantee is claimed.

@@ -1,0 +1,601 @@
+{
+  "name": "PH03 Lead Agent — Intake Routing",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ph03-lead-intake",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Lead Intake",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "template-lead-intake",
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const body = $input.first().json.body;\nif (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('Expected a JSON lead object.');\n// Keep unknown keys so FastAPI can reject them; never forward webhook headers.\nconst normalized = Object.fromEntries(Object.entries(body).map(([k,v]) => [k, typeof v === 'string' ? v.trim() : v]));\nreturn [{json: normalized}];"
+      },
+      "name": "Normalize Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ],
+      "id": "template-normalize-input",
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8000/leads?use_ai=true",
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "responseFormat": "json",
+              "neverError": false
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}"
+      },
+      "name": "Capture Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        520,
+        0
+      ],
+      "id": "template-capture-lead",
+      "onError": "stopWorkflow",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const data = $input.first().json;\nconst lead = data.lead;\nif (typeof data.created !== 'boolean' || !lead || typeof lead.id !== 'string') throw new Error('Invalid capture response.');\nconst route = lead.final_qualification ?? lead.qualification;\nif (!['hot','warm','cold'].includes(route)) throw new Error('Unsupported qualification.');\nreturn [{json:{lead,created:data.created,route}}];"
+      },
+      "name": "Classify Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        0
+      ],
+      "id": "template-classify-lead",
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Leads",
+          "mode": "name"
+        },
+        "options": {
+          "returnFirstMatch": false
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "lead_id",
+              "lookupValue": "={{ $('Classify Lead').first().json.lead.id }}"
+            }
+          ]
+        }
+      },
+      "name": "Find CRM Lead",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        1040,
+        0
+      ],
+      "id": "template-find-crm-lead",
+      "onError": "stopWorkflow",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const ctx = $('Classify Lead').first().json;\nconst rows = $input.all().map(i=>i.json).filter(r=>r.lead_id !== undefined && String(r.lead_id).trim() !== '');\nif (rows.length > 1 || rows.some(r=>r.lead_id !== ctx.lead.id)) throw new Error('CRM identity conflict.');\nif (rows.length) return [{json:{exists:true,result:'crm_reused',lead_id:ctx.lead.id,created:ctx.created,route:ctx.route,approval_status:rows[0].approval_status,follow_up_status:rows[0].follow_up_status}}];\nconst l=ctx.lead;\nconst crm={lead_id:l.id,created_at:l.created_at,name:l.name,email:l.email,company:l.company??'',source:l.source,service_interest:l.service_interest??'',budget_range:l.budget_range??'',timeline:l.timeline??'',company_size:l.company_size??'',lead_score:l.lead_score,qualification:l.qualification,final_qualification:ctx.route,final_priority:l.final_priority??l.priority,final_recommended_action:l.final_recommended_action??l.recommended_action,ai_status:l.ai_status??'',ai_summary:l.ai_assessment?.summary??'',approval_status:ctx.route==='cold'?'not_required':'pending',approval_decision:'',approved_at:'',follow_up_status:ctx.route==='cold'?'nurture':'awaiting_approval',follow_up_sent_at:'',last_action_at:new Date().toISOString(),notes:''};\nreturn [{json:{exists:false,crm,created:ctx.created,route:ctx.route}}];"
+      },
+      "name": "Prepare CRM Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        260
+      ],
+      "id": "template-prepare-crm-row",
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "condition",
+              "leftValue": "={{ $json.exists ? 'yes' : 'no' }}",
+              "rightValue": "yes",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "CRM Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        260,
+        260
+      ],
+      "id": "template-crm-exists",
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "resource": "sheet",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Leads",
+          "mode": "name"
+        },
+        "options": {
+          "cellFormat": "RAW"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "lead_id": "={{ $json.crm.lead_id }}",
+            "created_at": "={{ $json.crm.created_at }}",
+            "name": "={{ $json.crm.name }}",
+            "email": "={{ $json.crm.email }}",
+            "company": "={{ $json.crm.company }}",
+            "source": "={{ $json.crm.source }}",
+            "service_interest": "={{ $json.crm.service_interest }}",
+            "budget_range": "={{ $json.crm.budget_range }}",
+            "timeline": "={{ $json.crm.timeline }}",
+            "company_size": "={{ $json.crm.company_size }}",
+            "lead_score": "={{ $json.crm.lead_score }}",
+            "qualification": "={{ $json.crm.qualification }}",
+            "final_qualification": "={{ $json.crm.final_qualification }}",
+            "final_priority": "={{ $json.crm.final_priority }}",
+            "final_recommended_action": "={{ $json.crm.final_recommended_action }}",
+            "ai_status": "={{ $json.crm.ai_status }}",
+            "ai_summary": "={{ $json.crm.ai_summary }}",
+            "approval_status": "={{ $json.crm.approval_status }}",
+            "approval_decision": "={{ $json.crm.approval_decision }}",
+            "approved_at": "={{ $json.crm.approved_at }}",
+            "follow_up_status": "={{ $json.crm.follow_up_status }}",
+            "follow_up_sent_at": "={{ $json.crm.follow_up_sent_at }}",
+            "last_action_at": "={{ $json.crm.last_action_at }}",
+            "notes": "={{ $json.crm.notes }}"
+          },
+          "matchingColumns": [
+            "lead_id"
+          ],
+          "schema": [
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "company",
+              "displayName": "company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "service_interest",
+              "displayName": "service_interest",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "budget_range",
+              "displayName": "budget_range",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "timeline",
+              "displayName": "timeline",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "company_size",
+              "displayName": "company_size",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_score",
+              "displayName": "lead_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "qualification",
+              "displayName": "qualification",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "final_qualification",
+              "displayName": "final_qualification",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "final_priority",
+              "displayName": "final_priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "final_recommended_action",
+              "displayName": "final_recommended_action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ai_status",
+              "displayName": "ai_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ai_summary",
+              "displayName": "ai_summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "approval_status",
+              "displayName": "approval_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "approval_decision",
+              "displayName": "approval_decision",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "approved_at",
+              "displayName": "approved_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "follow_up_status",
+              "displayName": "follow_up_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "follow_up_sent_at",
+              "displayName": "follow_up_sent_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "last_action_at",
+              "displayName": "last_action_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "notes",
+              "displayName": "notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "name": "Upsert CRM Lead",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        520,
+        260
+      ],
+      "id": "template-upsert-crm-lead",
+      "onError": "stopWorkflow",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const ctx=$('Prepare CRM Row').first().json;\nreturn [{json:{result:ctx.exists?'crm_reused':'crm_upserted',lead_id:ctx.exists?ctx.lead_id:ctx.crm.lead_id,created:ctx.created,route:ctx.route,approval_status:ctx.exists?ctx.approval_status:ctx.crm.approval_status,follow_up_status:ctx.exists?ctx.follow_up_status:ctx.crm.follow_up_status}}];"
+      },
+      "name": "Intake Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        260
+      ],
+      "id": "template-intake-result",
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "name": "Intake Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1040,
+        260
+      ],
+      "id": "template-intake-response",
+      "onError": "stopWorkflow"
+    }
+  ],
+  "connections": {
+    "Lead Intake": {
+      "main": [
+        [
+          {
+            "node": "Normalize Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Input": {
+      "main": [
+        [
+          {
+            "node": "Capture Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Capture Lead": {
+      "main": [
+        [
+          {
+            "node": "Classify Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Lead": {
+      "main": [
+        [
+          {
+            "node": "Find CRM Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find CRM Lead": {
+      "main": [
+        [
+          {
+            "node": "Prepare CRM Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare CRM Row": {
+      "main": [
+        [
+          {
+            "node": "CRM Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CRM Exists": {
+      "main": [
+        [
+          {
+            "node": "Intake Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upsert CRM Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert CRM Lead": {
+      "main": [
+        [
+          {
+            "node": "Intake Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Intake Result": {
+      "main": [
+        [
+          {
+            "node": "Intake Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false,
+    "saveExecutionProgress": false
+  }
+}

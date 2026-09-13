@@ -1,0 +1,958 @@
+{
+  "name": "PH03 Lead Agent — Approval Follow-up",
+  "nodes": [
+    {
+      "parameters": {
+        "authentication": "basicAuth",
+        "path": "ph03-lead-approval",
+        "formTitle": "Lead follow-up approval",
+        "formDescription": "Authorized reviewers only. Approve or reject a stored lead follow-up.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "lead_id",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "decision",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "approve"
+                  },
+                  {
+                    "option": "reject"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "notes",
+              "fieldType": "textarea"
+            }
+          ]
+        },
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Approval Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "template-approval-form",
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const data=$input.first().json;\nconst lead_id=typeof data.lead_id==='string'?data.lead_id.trim():'';\nconst decision=typeof data.decision==='string'?data.decision.trim():'';\nconst notes=typeof data.notes==='string'?data.notes.trim():'';\nconst valid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(lead_id) && ['approve','reject'].includes(decision) && notes.length<=1000;\nreturn [{json:{valid,lead_id,decision,notes,result:valid?'validated':'invalid_approval'}}];"
+      },
+      "name": "Validate Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ],
+      "id": "template-validate-decision",
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "condition",
+              "leftValue": "={{ $json.valid ? 'yes' : 'no' }}",
+              "rightValue": "yes",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Valid Decision",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        520,
+        0
+      ],
+      "id": "template-valid-decision",
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'http://127.0.0.1:8000/leads/' + encodeURIComponent($('Validate Decision').first().json.lead_id) }}",
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "responseFormat": "json",
+              "neverError": false
+            }
+          }
+        }
+      },
+      "name": "Fetch Stored Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        0
+      ],
+      "id": "template-fetch-stored-lead",
+      "onError": "stopWorkflow",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Leads",
+          "mode": "name"
+        },
+        "options": {
+          "returnFirstMatch": false
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "lead_id",
+              "lookupValue": "={{ $('Validate Decision').first().json.lead_id }}"
+            }
+          ]
+        }
+      },
+      "name": "Find Approval CRM",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        1040,
+        0
+      ],
+      "id": "template-find-approval-crm",
+      "onError": "stopWorkflow",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const request=$('Validate Decision').first().json;\nconst lead=$('Fetch Stored Lead').first().json;\nconst rows=$input.all().map(i=>i.json).filter(r=>r.lead_id!==undefined && String(r.lead_id).trim()!=='');\nconst stop=result=>[{json:{action:'stop',result}}];\nif (!lead || lead.id!==request.lead_id) return stop('lead_mismatch');\nif (rows.length!==1 || rows[0].lead_id!==lead.id) return stop('crm_missing_or_conflicting');\nconst crm=rows[0];\nconst status=String(crm.follow_up_status??'').trim().toLowerCase();\nif (status==='sent' || crm.follow_up_sent_at) return stop('already_sent');\nif (status==='sending') return stop('manual_reconciliation_required');\nconst route=lead.final_qualification??lead.qualification;\nif (!['warm','hot'].includes(route)) return stop('ineligible_qualification');\nif (!['awaiting_approval','not_sent'].includes(status)) return stop('invalid_crm_state');\nif (!['approve','reject'].includes(request.decision)) return stop('invalid_approval');\nif (request.decision==='approve' && (typeof lead.email!=='string' || !/^[^\\s@,;<>]+@[^\\s@,;<>]+\\.[^\\s@,;<>]+$/.test(lead.email))) return stop('invalid_recipient');\nreturn [{json:{action:request.decision==='approve'?'send':'reject',result:'eligible',lead,route,notes:request.notes}}];"
+      },
+      "name": "Eligibility Guard",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        260
+      ],
+      "id": "template-eligibility-guard",
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "condition",
+              "leftValue": "={{ ['send','reject'].includes($json.action) ? 'yes' : 'no' }}",
+              "rightValue": "yes",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Eligible Decision",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        260,
+        260
+      ],
+      "id": "template-eligible-decision",
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "condition",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "send",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Approved Decision",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        520,
+        260
+      ],
+      "id": "template-approved-decision",
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const ctx=$input.first().json;\nif (ctx.action!=='send' || !['hot','warm'].includes(ctx.route)) throw new Error('Follow-up not eligible.');\nconst services={ai_customer_support:'AI customer support',lead_generation:'lead generation',email_automation:'email automation',n8n_automation:'workflow automation',rag_knowledge_bot:'a knowledge assistant',reporting_dashboard:'a reporting dashboard',custom_ai_automation:'custom AI automation',other:'your requested service'};\nconst service=services[ctx.lead.service_interest]??'your requested service';\nconst clean=v=>String(v??'').replace(/[\\r\\n\\t]/g,' ').trim();\nconst name=clean(ctx.lead.name)||'there';\nconst company=clean(ctx.lead.company);\nconst subject=`Regarding your ${service} inquiry - Phililee AI Labs`;\nconst invitation=ctx.route==='hot'?'Would you like to arrange a short discovery call to discuss next steps?':'Would more information or a short discussion be helpful?';\nconst email_body=`Hello ${name},\\n\\nThank you for your interest in ${service}${company?' for '+company:''}. ${invitation}\\n\\nBest regards,\\nPhililee AI Labs`;\nconst crm={lead_id:ctx.lead.id,approval_status:'approved',approval_decision:'approve',approved_at:new Date().toISOString(),follow_up_status:'sending',follow_up_sent_at:'',last_action_at:new Date().toISOString(),notes:ctx.notes};\nreturn [{json:{crm,recipient:ctx.lead.email,subject,email_body}}];"
+      },
+      "name": "Prepare Follow-up",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        260
+      ],
+      "id": "template-prepare-follow-up",
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "resource": "sheet",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Leads",
+          "mode": "name"
+        },
+        "options": {
+          "cellFormat": "RAW"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "lead_id": "={{ $json.crm.lead_id }}",
+            "approval_status": "={{ $json.crm.approval_status }}",
+            "approval_decision": "={{ $json.crm.approval_decision }}",
+            "approved_at": "={{ $json.crm.approved_at }}",
+            "follow_up_status": "={{ $json.crm.follow_up_status }}",
+            "follow_up_sent_at": "={{ $json.crm.follow_up_sent_at }}",
+            "last_action_at": "={{ $json.crm.last_action_at }}",
+            "notes": "={{ $json.crm.notes }}"
+          },
+          "matchingColumns": [
+            "lead_id"
+          ],
+          "schema": [
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "approval_status",
+              "displayName": "approval_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "approval_decision",
+              "displayName": "approval_decision",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "approved_at",
+              "displayName": "approved_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "follow_up_status",
+              "displayName": "follow_up_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "follow_up_sent_at",
+              "displayName": "follow_up_sent_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "last_action_at",
+              "displayName": "last_action_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "notes",
+              "displayName": "notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "name": "Mark Sending",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        1040,
+        260
+      ],
+      "id": "template-mark-sending",
+      "onError": "stopWorkflow",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const expected=$('Prepare Follow-up').first().json.crm;\nconst rows=$input.all().map(i=>i.json);\nif (rows.length!==1 || rows[0].lead_id!==expected.lead_id || rows[0].follow_up_status!=='sending') throw new Error('CRM send marker not confirmed.');\nreturn [{json:{ready:true}}];"
+      },
+      "name": "Confirm Sending Marker",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        520
+      ],
+      "id": "template-confirm-sending-marker",
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $('Prepare Follow-up').first().json.recipient }}",
+        "subject": "={{ $('Prepare Follow-up').first().json.subject }}",
+        "emailType": "text",
+        "message": "={{ $('Prepare Follow-up').first().json.email_body }}",
+        "options": {}
+      },
+      "name": "Send Approved Gmail",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        260,
+        520
+      ],
+      "id": "template-send-approved-gmail",
+      "onError": "stopWorkflow",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const previous=$('Prepare Follow-up').first().json.crm;\nreturn [{json:{crm:{...previous,follow_up_status:'sent',follow_up_sent_at:new Date().toISOString(),last_action_at:new Date().toISOString()}}}];"
+      },
+      "name": "Prepare Sent Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        520
+      ],
+      "id": "template-prepare-sent-status",
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "resource": "sheet",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Leads",
+          "mode": "name"
+        },
+        "options": {
+          "cellFormat": "RAW"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "lead_id": "={{ $json.crm.lead_id }}",
+            "approval_status": "={{ $json.crm.approval_status }}",
+            "approval_decision": "={{ $json.crm.approval_decision }}",
+            "approved_at": "={{ $json.crm.approved_at }}",
+            "follow_up_status": "={{ $json.crm.follow_up_status }}",
+            "follow_up_sent_at": "={{ $json.crm.follow_up_sent_at }}",
+            "last_action_at": "={{ $json.crm.last_action_at }}",
+            "notes": "={{ $json.crm.notes }}"
+          },
+          "matchingColumns": [
+            "lead_id"
+          ],
+          "schema": [
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "approval_status",
+              "displayName": "approval_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "approval_decision",
+              "displayName": "approval_decision",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "approved_at",
+              "displayName": "approved_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "follow_up_status",
+              "displayName": "follow_up_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "follow_up_sent_at",
+              "displayName": "follow_up_sent_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "last_action_at",
+              "displayName": "last_action_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "notes",
+              "displayName": "notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "name": "Mark Sent",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        780,
+        520
+      ],
+      "id": "template-mark-sent",
+      "onError": "stopWorkflow",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{json:{result:'sent'}}];"
+      },
+      "name": "Sent Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        520
+      ],
+      "id": "template-sent-result",
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const ctx=$input.first().json;\nif (ctx.action!=='reject') throw new Error('Rejection not eligible.');\nreturn [{json:{crm:{lead_id:ctx.lead.id,approval_status:'rejected',approval_decision:'reject',follow_up_status:'not_sent',last_action_at:new Date().toISOString(),notes:ctx.notes}}}];"
+      },
+      "name": "Prepare Rejection",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        780
+      ],
+      "id": "template-prepare-rejection",
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "resource": "sheet",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Leads",
+          "mode": "name"
+        },
+        "options": {
+          "cellFormat": "RAW"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "lead_id": "={{ $json.crm.lead_id }}",
+            "approval_status": "={{ $json.crm.approval_status }}",
+            "approval_decision": "={{ $json.crm.approval_decision }}",
+            "follow_up_status": "={{ $json.crm.follow_up_status }}",
+            "last_action_at": "={{ $json.crm.last_action_at }}",
+            "notes": "={{ $json.crm.notes }}"
+          },
+          "matchingColumns": [
+            "lead_id"
+          ],
+          "schema": [
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "approval_status",
+              "displayName": "approval_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "approval_decision",
+              "displayName": "approval_decision",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "follow_up_status",
+              "displayName": "follow_up_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "last_action_at",
+              "displayName": "last_action_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "notes",
+              "displayName": "notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "name": "Mark Rejected",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        260,
+        780
+      ],
+      "id": "template-mark-rejected",
+      "onError": "stopWorkflow",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{json:{result:'rejected'}}];"
+      },
+      "name": "Rejected Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        780
+      ],
+      "id": "template-rejected-result",
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { formSubmittedText: 'Approval processing result: ' + $json.result } }}",
+        "options": {}
+      },
+      "name": "Approval Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        780,
+        780
+      ],
+      "id": "template-approval-result",
+      "onError": "stopWorkflow"
+    }
+  ],
+  "connections": {
+    "Approval Form": {
+      "main": [
+        [
+          {
+            "node": "Validate Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Decision": {
+      "main": [
+        [
+          {
+            "node": "Valid Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid Decision": {
+      "main": [
+        [
+          {
+            "node": "Fetch Stored Lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Approval Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Stored Lead": {
+      "main": [
+        [
+          {
+            "node": "Find Approval CRM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Approval CRM": {
+      "main": [
+        [
+          {
+            "node": "Eligibility Guard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eligibility Guard": {
+      "main": [
+        [
+          {
+            "node": "Eligible Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eligible Decision": {
+      "main": [
+        [
+          {
+            "node": "Approved Decision",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Approval Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approved Decision": {
+      "main": [
+        [
+          {
+            "node": "Prepare Follow-up",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Rejection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Follow-up": {
+      "main": [
+        [
+          {
+            "node": "Mark Sending",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Sending": {
+      "main": [
+        [
+          {
+            "node": "Confirm Sending Marker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirm Sending Marker": {
+      "main": [
+        [
+          {
+            "node": "Send Approved Gmail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Approved Gmail": {
+      "main": [
+        [
+          {
+            "node": "Prepare Sent Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Sent Status": {
+      "main": [
+        [
+          {
+            "node": "Mark Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Sent": {
+      "main": [
+        [
+          {
+            "node": "Sent Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sent Result": {
+      "main": [
+        [
+          {
+            "node": "Approval Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Rejection": {
+      "main": [
+        [
+          {
+            "node": "Mark Rejected",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Rejected": {
+      "main": [
+        [
+          {
+            "node": "Rejected Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rejected Result": {
+      "main": [
+        [
+          {
+            "node": "Approval Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false,
+    "saveExecutionProgress": false
+  }
+}
