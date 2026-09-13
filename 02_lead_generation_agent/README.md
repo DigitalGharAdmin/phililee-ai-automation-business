@@ -105,8 +105,11 @@ If `.venv` already exists, reuse it. No activation is required with these comman
 Use this project's environment rather than the Customer Support Agent environment.
 The default is `sqlite:///./lead_generation.db`, relative to the project working
 directory. Optionally set `$env:DATABASE_URL` before starting the server.
-Configuration reads process environment variables at import; `.env` is not loaded
-automatically. `.env.example` contains only the safe local example.
+Settings automatically load this project's `.env` at import, regardless of the
+working directory. Explicit process environment variables take precedence, including
+explicitly empty values. Optionally copy `.env.example` to `.env` if it does not
+already exist, then edit local defaults privately. A missing `.env` is fine.
+Restart the server after configuration changes; never commit `.env`.
 Stop the development server with Ctrl+C when finished.
 
 Swagger UI: <http://127.0.0.1:8000/docs>.
@@ -293,8 +296,9 @@ this does not migrate old database tables.
 
 ## AI configuration, privacy and failures
 
-Set optional `OPENAI_API_KEY` in the process environment before starting the app.
-`OPENAI_MODEL` defaults to `gpt-4.1-mini`. `.env` is not auto-loaded. Keep real
+Set optional `OPENAI_API_KEY` in this project's `.env` or process environment before
+starting the app. `OPENAI_MODEL` defaults to `gpt-4.1-mini`; process values override
+the automatically loaded `.env`. Keep real
 credentials out of shell history and repository files. An empty key causes local
 fallback without constructing a client. No credentials are required to run tests.
 

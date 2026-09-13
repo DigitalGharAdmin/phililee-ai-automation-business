@@ -1,6 +1,11 @@
-"""Local configuration, read from the process environment at startup."""
+"""Local configuration; explicit process variables override project .env values."""
 
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parents[1] / ".env", override=False)
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./lead_generation.db")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
