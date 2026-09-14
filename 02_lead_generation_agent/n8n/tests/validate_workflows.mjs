@@ -57,6 +57,9 @@ for (const wf of [A, B]) {
 }
 assert.equal(A.nodes.find(n=>n.name==='Capture Lead').parameters.url, 'http://127.0.0.1:8000/leads?use_ai=true');
 // n8n IF output 0 is TRUE; output 1 is FALSE. Reject extra branch edges too.
+const crmCondition = A.nodes.find(n=>n.name==='CRM Exists').parameters.conditions.conditions[0];
+assert.equal(crmCondition.leftValue, '={{ $json.exists }}');
+assert.deepEqual(crmCondition.operator, {type:'boolean',operation:'true',singleValue:true});
 assert.deepEqual(A.connections['CRM Exists'].main, [
   [{node:'Intake Result',type:'main',index:0}],
   [{node:'Upsert CRM Lead',type:'main',index:0}],
@@ -90,7 +93,14 @@ function run(wf, {route='warm', decision='approve', rows=[], created=true, fail=
       if (n.type.endsWith('.code')) items=vm.runInNewContext(`(function(){${n.parameters.jsCode}\n})()`,ctx,{timeout:1000});
       else if (n.type.endsWith('.if')) {
         const condition=n.parameters.conditions.conditions[0];
-        port=expr(condition.leftValue)===condition.rightValue?0:1;
+        const value=expr(condition.leftValue);
+        if (condition.operator.type==='boolean' && condition.operator.operation==='true') {
+          assert.equal(typeof value,'boolean', 'CRM existence must be a strict boolean');
+          port=value===true?0:1;
+        } else {
+          assert.equal(condition.operator.operation,'equals');
+          port=value===condition.rightValue?0:1;
+        }
       } else if (n.type.endsWith('.httpRequest')) {
         const data=lead(route); if (email!==undefined) data.email=email;
         items=[{json:wf===A?{created,lead:data}:data}];

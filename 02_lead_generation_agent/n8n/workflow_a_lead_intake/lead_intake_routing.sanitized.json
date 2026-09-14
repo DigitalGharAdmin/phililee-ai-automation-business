@@ -145,11 +145,12 @@
           "conditions": [
             {
               "id": "condition",
-              "leftValue": "={{ $json.exists ? 'yes' : 'no' }}",
-              "rightValue": "yes",
+              "leftValue": "={{ $json.exists }}",
+              "rightValue": "",
               "operator": {
-                "type": "string",
-                "operation": "equals"
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
               }
             }
           ],
@@ -165,7 +166,9 @@
         260
       ],
       "id": "template-crm-exists",
-      "onError": "stopWorkflow"
+      "onError": "stopWorkflow",
+      "notes": "TRUE (existing CRM row): Intake Result directly; no CRM write. FALSE (new CRM row): Upsert CRM Lead, then Intake Result. Both finish at Intake Response.",
+      "notesInFlow": true
     },
     {
       "parameters": {
