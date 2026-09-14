@@ -56,6 +56,14 @@ for (const wf of [A, B]) {
   }
 }
 assert.equal(A.nodes.find(n=>n.name==='Capture Lead').parameters.url, 'http://127.0.0.1:8000/leads?use_ai=true');
+// n8n IF output 0 is TRUE; output 1 is FALSE. Reject extra branch edges too.
+assert.deepEqual(A.connections['CRM Exists'].main, [
+  [{node:'Intake Result',type:'main',index:0}],
+  [{node:'Upsert CRM Lead',type:'main',index:0}],
+]);
+assert(!reachable(A, 'Intake Result', 'Upsert CRM Lead'), 'Existing branch must bypass upsert');
+assert(reachable(A, 'Upsert CRM Lead', 'Intake Result'), 'New branch must reach result');
+assert(reachable(A, 'Intake Result', 'Intake Response'));
 assert(B.nodes.find(n=>n.name==='Fetch Stored Lead').parameters.url.includes('http://127.0.0.1:8000/leads/'));
 assert(!A.nodes.some(n=>n.type.endsWith('.gmail')));
 assert.equal(B.nodes.filter(n=>n.type.endsWith('.gmail')).length, 1);
@@ -65,13 +73,14 @@ assert(reachable(B, 'Send Approved Gmail', 'Mark Sent'));
 assert.deepEqual(B.connections['Approved Decision'].main[0].map(e=>e.node), ['Prepare Follow-up']);
 
 function run(wf, {route='warm', decision='approve', rows=[], created=true, fail=null, email, input}={}) {
-  const state={rows:structuredClone(rows),sent:0,visited:[],response:null};
+  const state={rows:structuredClone(rows),sent:0,visited:[],response:null,crmWrites:0,resultInput:null};
   const history = {};
   let name=wf.nodes[0].name;
   let items=[{json: input ?? (wf===A ? {body:{name:'Demo Buyer',email:'buyer@example.com',message:'Please tell me more.',source:'form'}} : {lead_id:ID,decision,notes:'Reviewed'})}];
   try {
     while (name) {
       const n=wf.nodes.find(n=>n.name===name); state.visited.push(name);
+      if (name==='Intake Result') state.resultInput=structuredClone(items[0].json);
       if (name===fail) throw new Error('Simulated service failure');
       const ctx={$input:{first:()=>items[0],all:()=>items},$json:items[0]?.json,
         $:key=>({first:()=>history[key]?.[0],all:()=>history[key]})};
@@ -91,6 +100,7 @@ function run(wf, {route='warm', decision='approve', rows=[], created=true, fail=
           items=state.rows.filter(r=>r.lead_id===key).map(json=>({json:structuredClone(json)}));
           if (!items.length) items=[{json:{}}];
         } else {
+          state.crmWrites++;
           const data=Object.fromEntries(Object.entries(n.parameters.columns.value).map(([k,v])=>[k,expr(v)]));
           const index=state.rows.findIndex(r=>r.lead_id===data.lead_id);
           if (index<0 && n.parameters.operation==='update') throw new Error('Missing CRM row');
@@ -115,11 +125,36 @@ for (const route of ['hot','warm','cold']) {
   const result=run(A,{route}); assert(!result.error); assert.equal(result.rows.length,1);
   assert.equal(result.rows[0].follow_up_status,route==='cold'?'nurture':'awaiting_approval');
   assert.equal(result.sent,0); assert.equal(result.response.route,route); cases++;
+  assert.equal(result.crmWrites,1);
+  assert(result.visited.includes('Upsert CRM Lead'));
+  assert(result.visited.includes('Intake Result') && result.visited.includes('Intake Response'));
+  assert.equal(result.resultInput.lead_id,ID); // Flat Sheets output, not {crm: ...}.
+  assert.equal(result.resultInput.crm,undefined);
+  assert.equal(result.response.result,'crm_upserted');
 }
 for (const status of ['sent','sending','not_sent','awaiting_approval']) {
-  const original=row(status); const result=run(A,{created:false,rows:[original]});
-  assert.deepEqual(result.rows,[original]); assert.equal(result.response.result,'crm_reused'); cases++;
+  const original={...row(status), approval_status:status==='not_sent'?'rejected':'approved',
+    approval_decision:status==='not_sent'?'reject':'approve', approved_at:'2026-01-02T00:00:00Z',
+    follow_up_sent_at:status==='sent'?'2026-01-03T00:00:00Z':'', notes:'Preserve reviewer context'};
+  const result=run(A,{created:false,rows:[original]});
+  assert(!result.error);
+  assert.equal(result.crmWrites,0, 'Existing lead must perform no CRM writes');
+  assert(!result.visited.includes('Upsert CRM Lead'));
+  assert(result.visited.includes('Intake Result') && result.visited.includes('Intake Response'));
+  assert.equal(result.resultInput.exists,true);
+  assert.equal(result.resultInput.crm,undefined); // Existing shape intentionally has no crm.
+  for (const field of ['approval_status','approval_decision','approved_at','follow_up_status','follow_up_sent_at']) {
+    assert.equal(result.rows[0][field],original[field], `Existing ${field} must not reset`);
+  }
+  assert.deepEqual(result.rows,[original]); assert.equal(result.response.result,'crm_reused');
+  assert.equal(result.response.approval_status,original.approval_status);
+  assert.equal(result.response.follow_up_status,original.follow_up_status);
+  assert.equal(result.response.lead_id,ID); cases++;
 }
+// A duplicate backend lead with no CRM row still takes the new-CRM branch.
+const missingCrm=run(A,{created:false});
+assert(!missingCrm.error); assert.equal(missingCrm.crmWrites,1);
+assert.equal(missingCrm.response.result,'crm_upserted'); cases++;
 for (const route of ['warm','hot']) {
   const result=run(B,{route,rows:[row('awaiting_approval')]});
   assert(!result.error); assert.equal(result.sent,1); assert.equal(result.rows[0].follow_up_status,'sent');

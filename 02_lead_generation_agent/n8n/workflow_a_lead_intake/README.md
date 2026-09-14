@@ -53,6 +53,23 @@ raise a fixed identity-conflict error. Backend data remains authoritative; reuse
 does not refresh manually changed profile fields. New rows are initialized from
 the stored lead, including `ai_assessment.summary` when present.
 
+Confirm this exact IF wiring after import or manual editing:
+
+| CRM Exists output | Destination | CRM operation |
+| --- | --- | --- |
+| TRUE (output 0), exists=true | Intake Result -> Intake Response | No write |
+| FALSE (output 1), exists=false | Upsert CRM Lead -> Intake Result -> Intake Response | Upsert by lead_id |
+
+Do not connect TRUE to Upsert CRM Lead. The existing-row output intentionally has
+no `crm` object. Intake Result reads `Prepare CRM Row`'s saved context, so it accepts
+both the direct existing-row result and the flat Sheets output after a new-row
+upsert. The no-write branch preserves approval_status, approval_decision,
+approved_at, follow_up_status and follow_up_sent_at, plus all other existing cells.
+The saved template already uses this wiring; if an imported workflow differs,
+correct its connections manually and recheck the two branches before continuing.
+The offline validator explicitly checks both paths, both result input shapes and
+zero CRM writes for existing rows.
+
 The response contains only `result` (crm_reused/crm_upserted), `lead_id`, `created`,
 `route`, `approval_status`, and `follow_up_status`. It contains no contact fields.
 Normal repeated submissions reuse a CRM row; concurrency is not atomic and this
