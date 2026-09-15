@@ -71,6 +71,33 @@ assert(B.nodes.find(n=>n.name==='Fetch Stored Lead').parameters.url.includes('ht
 assert(!A.nodes.some(n=>n.type.endsWith('.gmail')));
 assert.equal(B.nodes.filter(n=>n.type.endsWith('.gmail')).length, 1);
 assert.equal(B.nodes[0].parameters.authentication, 'basicAuth');
+const approvalForm = B.nodes.find(n=>n.name==='Approval Form');
+const approvalFields = approvalForm.parameters.formFields.values;
+assert.equal(approvalForm.typeVersion, 2); // Preserve Respond to Webhook compatibility.
+assert.deepEqual(approvalFields.map(f=>f.fieldName), ['lead_id','decision','notes']);
+assert.deepEqual(approvalFields.map(f=>f.fieldLabel), ['lead_id','decision','notes']);
+assert.equal(approvalFields[0].fieldType, 'text');
+assert.equal(approvalFields[0].requiredField, true);
+assert.equal(approvalFields[1].fieldType, 'dropdown');
+assert.equal(approvalFields[1].requiredField, true);
+assert.deepEqual(approvalFields[1].fieldOptions.values, [{option:'approve'},{option:'reject'}]);
+assert(!approvalFields[1].multiselect);
+assert.equal(approvalFields[2].fieldType, 'textarea');
+assert(!approvalFields[2].requiredField);
+// Offline contract check of n8n's indexed form submission mapping, not a live form test.
+for (const version of [2, 2.4]) {
+  const body = {'field-0': ID, 'field-1': 'reject', 'field-2': ''};
+  const payload = Object.fromEntries(approvalFields.map((field, index)=>[
+    version>=2.4 ? field.fieldName : field.fieldLabel, body[`field-${index}`],
+  ]));
+  assert.equal(payload.lead_id, ID);
+  const code = B.nodes.find(n=>n.name==='Validate Decision').parameters.jsCode;
+  const validated = vm.runInNewContext(`(function(){${code}\n})()`,
+    {$input:{first:()=>({json:payload})}}, {timeout:1000})[0].json;
+  assert.equal(validated.valid, true);
+  assert.equal(validated.lead_id, ID);
+  assert.equal(validated.decision, 'reject');
+}
 assert(!reachable(B, 'Prepare Rejection', 'Send Approved Gmail'));
 assert(reachable(B, 'Send Approved Gmail', 'Mark Sent'));
 assert.deepEqual(B.connections['Approved Decision'].main[0].map(e=>e.node), ['Prepare Follow-up']);

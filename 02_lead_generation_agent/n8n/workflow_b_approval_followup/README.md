@@ -22,6 +22,17 @@ authorized reviewers. Required fields are `lead_id` (UUID string) and `decision`
 characters. Unknown decisions, including yes/no/maybe or uppercase APPROVE, are
 rejected. The form does not accept contact fields for use in follow-up.
 
+The export sets both `fieldLabel` and `fieldName` to the exact keys `lead_id`,
+`decision`, and `notes`. Version 2 uses the label as the output key; newer form
+versions support a separate field name. Keep both names aligned when importing
+or editing fields. Keep `lead_id` a required Text Input, not a numeric input.
+After importing, open a fresh test form and confirm its output includes the entered
+UUID under `lead_id` before proceeding with manual acceptance. A missing key in
+an existing live form is not reproduced by the offline template checks; check
+the imported node configuration and stale test form before retrying. Keep Basic
+Auth enabled and select the local credential. The trigger version remains 2 to
+preserve the existing Respond to Webhook flow.
+
 HTTP GET uses `http://127.0.0.1:8000/leads/{lead_id}`, with the validated identifier
 URL-encoded. FastAPI/database supplies recipient, name, company, service and
 qualification. No recipient, score or AI result supplied in the form is trusted.

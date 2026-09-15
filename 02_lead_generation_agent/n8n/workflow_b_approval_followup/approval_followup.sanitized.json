@@ -11,11 +11,13 @@
           "values": [
             {
               "fieldLabel": "lead_id",
+              "fieldName": "lead_id",
               "fieldType": "text",
               "requiredField": true
             },
             {
               "fieldLabel": "decision",
+              "fieldName": "decision",
               "fieldType": "dropdown",
               "fieldOptions": {
                 "values": [
@@ -31,6 +33,7 @@
             },
             {
               "fieldLabel": "notes",
+              "fieldName": "notes",
               "fieldType": "textarea"
             }
           ]
