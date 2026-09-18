@@ -1,7 +1,8 @@
 # AI-Powered Business Automation System
 
-MASTER BUILD 05, internal Build 1: Commercial Automation Scope + Architecture.
-Build 1 is a documented and offline-validated foundation. No live automation exists yet.
+MASTER BUILD 05, internal Build 2: Core Business Automation Workflow.
+Build 1 defined the contracts. Build 2 provides an inactive sanitized workflow and
+offline verification; native import and live provider acceptance remain pending.
 
 Small businesses often copy form submissions into spreadsheets, sort inquiries and
 write repetitive replies manually. This reusable package will standardize intake,
@@ -54,6 +55,22 @@ It validates fixtures and negative cases, required documentation, secret/privacy
 patterns and Git ignore behavior. It prints only paths/categories on scan failure.
 Pattern scanning supplements review and does not prove absence of every secret.
 
-Build 1: COMPLETE after offline validation and the local commit. No live acceptance
-is claimed. Next: Build 2 — Core Business Automation Workflow. No later master
-build is started. Existing Customer Support and Lead Generation projects are unchanged.
+Builds 1 and 2: COMPLETE for their documentation/implementation/offline scope.
+No live acceptance is claimed. Next: Build 3 — Reliability + Error Handling.
+No later master build is started. Other projects are unchanged.
+
+## Build 2 core workflow
+
+The [inactive core template](n8n/workflow_core/business_automation_core.sanitized.json)
+validates authenticated intake, applies deterministic rules, checks request_id,
+optionally requests AI assistance, logs to Sheets and gates fixed acknowledgements.
+Matching duplicates return stored state without writes or resends. Invalid input
+cannot call providers. Email and AI remain disabled by default. Billing/complaint
+responses remain pending; no approval-resumption workflow is implemented.
+
+Run `node n8n/tests/validate_workflows.mjs`: 36 nodes, 41 offline workflow scenarios
+and 19 Build 1 contract checks. These use actual exported Code nodes and fake providers,
+not a live n8n runtime. Run `node scripts/build_core.mjs` to regenerate the JSON from
+its reviewable source, then rerun validation. No dependency installation is needed.
+See [setup/schema/limits](n8n/workflow_core/README.md) and
+[contract reconciliations](docs/BUILD_2_NOTES.md).

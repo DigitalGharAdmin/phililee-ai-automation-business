@@ -1,8 +1,110 @@
-# Core workflow handoff
+# MB05 Business Automation — Core Workflow
 
-Planned name: Business Automation - Inquiry Intake. The authenticated intake follows
-the architecture and contracts in `docs/`. Keep configuration client-neutral and
-email disabled until acceptance. Existing request IDs branch before AI/logging and
-cannot reset approval or email state. Build 2 must test both new and duplicate paths,
-all no-send gates and the sending/sent/unknown state transitions. No nodes or live
-workflow have been created in Build 1.
+Import `business_automation_core.sanitized.json` inactive. Implementation and offline
+checks are complete; native import and live acceptance remain unverified.
+
+## Sequence and contract
+
+POST Webhook Intake -> Normalize Input -> Validate Input -> Valid Request?
+Invalid -> Prepare Invalid Result -> Prepare Final Status -> Respond to Webhook.
+Valid -> Apply Business Rules -> Find Existing Request -> Inspect Existing Request.
+Existing -> duplicate/conflict response. New -> optional AI or unavailable branch
+-> Reconcile Classification -> Prepare Business Log -> Log Business Request ->
+confirm log -> Prepare Business Response -> Should Send Email?
+No send -> final result. Send -> Mark Sending -> confirm -> Gmail -> Mark Sent ->
+confirm -> final result. External errors go to fixed safe result handlers.
+
+Webhook: POST `mb05-business-intake`, Basic Auth, responseNode. Submit the JSON body
+from [the contract](../../docs/DATA_CONTRACT.md). Enums and booleans remain strict;
+unknown fields cannot inject config. Output retains exactly ten public fields.
+ai_status is internal/CRM only. HTTP codes: rejected 400, conflict 409, dependency
+failure 503, approval/reconciliation 202, logged/completed/duplicate 200.
+
+## Setup
+
+1. Confirm installed support for Webhook 2, Code 2, IF 2.2, HTTP Request 4.2,
+   Sheets 4.6, Gmail 2.1 and Respond to Webhook 1.4. Offline tests are not native
+   n8n execution; review every imported parameter before enabling.
+2. Allow the Node built-in `crypto` module on the Code task runner using local
+   `NODE_FUNCTION_ALLOW_BUILTIN=crypto` where required. It computes SHA-256 only.
+   Check this deployment prerequisite; do not broaden module permissions.
+3. Select local HTTP Basic Auth on Webhook, Sheets OAuth on every Sheets node,
+   and replace `YOUR_GOOGLE_SHEET_ID` locally. Use a private Requests tab with the
+   headers below. Recheck mappings after schema refresh; retain RAW write format.
+4. Edit only the trusted config literal in Apply Business Rules: business_name,
+   email_enabled, acknowledgement_policy, ai_enabled, ai_model. Enable flags and
+   policy default false; use actual booleans. Input cannot override them.
+5. To enable AI, select a local OpenAI credential, choose a Responses structured-
+   output model instead of `YOUR_OPENAI_MODEL`, and set ai_enabled=true. Disabled
+   or unconfigured AI yields unavailable. Provider/credential failure yields fallback.
+6. Select Gmail OAuth only for separately authorized testing. Sender is the connected
+   account. email_enabled alone still requires approval; acknowledgement_policy=true
+   explicitly permits fixed sales/support/general acknowledgements. Billing and
+   complaint always stay pending. This core contains no approval UI or resumption.
+7. Keep inactive until local credentials, response modes and connectivity pass manual
+   acceptance. Never send a live demo to example.com. Use a private/HTTPS endpoint.
+
+.env.example is a configuration inventory, not an n8n loader. Map model/label/flags
+to the literal, sheet ID to native selectors, and keys to local credentials only.
+
+## Requests sheet schema
+
+Use one header row and unique request_id values. Initial append/update mappings:
+
+```text
+request_id,payload_fingerprint,received_at,created_at,updated_at,customer_name,email,company,request_type,source,classification,priority,route,action,status,ai_status,result_summary,requires_response,email_status,last_action_at,notes,approval_status,response_version,sent_at
+```
+
+No original message, raw AI response or AI summary is stored. ai_status is success,
+fallback or unavailable; response_version is ack-v1; approval_status is pending,
+policy_allowed or not_required. Later updates change only delivery state, summary,
+action and timestamps matched by request_id; notes/profile fields are not blanked.
+Do not add extra empty mappings after refresh. Restrict contact-data access/retention.
+
+## AI, send gates and duplicate behavior
+
+AI uses Responses strict structured output, store=false, a 500-output-token cap and
+15-second timeout per attempt. Only request_type and redacted message are sent.
+Known name/email/company/ID values and obvious email/number/UUID patterns are removed;
+this is best-effort redaction, not complete anonymization. Never put secrets in text.
+Schema-valid suggestions are discarded after setting ai_status. Deterministic
+classification, priority and route always win. Refusal/incomplete/malformed output
+and provider failures fall back without preventing logging.
+
+The SHA-256 fingerprint covers all normalized fields except request_id in sorted
+key order. It is internal, not anonymization. One matching ID/fingerprint reuses
+stored classification/route/email state without AI, writes or Gmail. Changed content,
+multiple matches or corrupt state returns conflict. Failed/pending/unknown records
+are never automatically resumed by replaying intake.
+
+Email needs validated input, requires_response=true, both switches true, an allowed
+category, a confirmed log and confirmed sending marker. Subject/body are fixed
+templates with a bounded local business label, not user or AI prose. No-send states
+are not_requested, disabled or pending_approval, preserving Build 1 terminology.
+
+## Failures, verification and Build 3 handoff
+
+AI/Sheets retry 3 attempts with 2000 ms waits. Gmail never retries: an ambiguous
+response could already have delivered mail. Dedicated external-node error outputs
+handle expected failures; Never Error is disabled. Lookup/log failure prevents mail.
+Sheets Always Output Data intentionally permits absent-row handling and explicit
+checking of empty write output. Confirmation failure never opens the send gate.
+
+Sending-marker/Gmail/final-update failure returns unknown/needs_reconciliation and
+attempts to persist that state. If Mark Unknown also fails, the result remains safe,
+but the row may retain sending or its earlier state. Reconcile provider delivery
+before retrying. logged=false means persistence was not confirmed; a failed initial
+write might still have committed remotely. Unexpected Code/config/runtime errors
+stop execution; not every infrastructure failure can produce a structured response.
+
+Lookup/upsert/send is not atomic. Concurrent requests or write retries can overwrite
+state or duplicate rows/delivery. Serialize the MVP, including intake versus manual
+updates. No exactly-once guarantee exists. Execution data saving is disabled in the
+export; check deployment-wide retention, and never share raw provider diagnostics.
+
+Run `node n8n/tests/validate_workflows.mjs`: 41 fake-provider scenarios plus Build 1
+checks. Build 3 will address shared safe error handling, reconciliation procedures
+and stronger reliability controls; none of that separate workflow is built here.
+
+Sources: [n8n Sheets mapping implementation](https://github.com/n8n-io/n8n/blob/master/packages/nodes-base/nodes/Google/Sheet/v2/actions/sheet/update.operation.ts),
+[OpenAI structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs).

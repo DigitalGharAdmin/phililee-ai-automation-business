@@ -18,7 +18,8 @@ flowchart TD
   Status --> Result
 ```
 
-Build 2 will implement this graph; Build 1 includes contracts and offline checks only.
+Build 2 implements this graph in an inactive sanitized template with offline checks.
+Native import/live acceptance is pending; see [Build 2 notes](BUILD_2_NOTES.md).
 Duplicate lookup precedes AI to avoid unnecessary external processing. The sequence
 does not provide an atomic transaction across Sheets and Gmail.
 
@@ -35,7 +36,8 @@ dedup state or credentials across clients. BUSINESS_NAME supplies a template lab
 not authorization. GOOGLE_SHEET_ID selects local storage. EMAIL_ENABLED and
 AI_ENABLED default false; invalid boolean configuration fails closed. OPENAI_MODEL
 must be explicitly selected if AI is enabled; a missing key/model means fallback.
-No .env loader or n8n credential provisioning is implemented in Build 1.
+No .env loader or credential provisioning is implemented. Build 2 maps these settings
+to a trusted config literal and native credential/document selectors.
 
 Planned CRM columns: request_id, payload_fingerprint, classification, priority, route,
 action, status, email_status, customer_name, email, company, source,

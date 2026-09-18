@@ -44,5 +44,6 @@
 14. Error workflow may notify operators using only fixed error category, stage and
     time. No raw message, payload, email address, headers or provider error text.
 
-The rules define future workflow behavior. Build 1 checks contract validity and
-safety invariants offline; Build 2 must test the implemented transitions and guards.
+Build 2 tests the core transitions and guards offline. Approval resumption and
+shared error notifications remain handoffs, not executable features. See
+[Build 2 notes](BUILD_2_NOTES.md) for reconciliations and limits.

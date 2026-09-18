@@ -12,7 +12,7 @@ const types=['sales','support','complaint','billing','general'];
 const priorities=['low','normal','high'];
 const routes={sales:'sales_queue',support:'support_queue',complaint:'review_queue',billing:'review_queue',general:'general_queue'};
 const inputKeys=['request_id','customer_name','email','company','request_type','message','source','priority_hint','requires_response'];
-function input(raw) {
+export function input(raw) {
   assert(raw && typeof raw==='object' && !Array.isArray(raw));
   assert(Object.keys(raw).every(k=>inputKeys.includes(k)));
   const x={company:null,request_type:'general',priority_hint:'normal',requires_response:false,...raw};
@@ -30,7 +30,7 @@ function input(raw) {
   return x;
 }
 const summaries={rejected:'invalid_input',conflict:'id_conflict',logged:'recorded',awaiting_approval:'approval_required',completed:'acknowledgement_sent',duplicate:'existing_request',failed:'operation_failed',needs_reconciliation:'reconciliation_required'};
-function output(x) {
+export function output(x) {
   assert(x && typeof x==='object' && !Array.isArray(x));
   assert.deepEqual(Object.keys(x).sort(),['request_id','accepted','classification','priority','route','action','status','logged','email_status','result_summary'].sort());
   assert(x.request_id===null || uuid(x.request_id));
