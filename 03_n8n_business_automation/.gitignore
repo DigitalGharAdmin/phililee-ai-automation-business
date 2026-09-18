@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+*.db
+*.db-*
+*.sqlite*
+n8n/raw_exports/
+node_modules/
+credentials/
+*.pem
+*.key

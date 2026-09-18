@@ -1,0 +1,4 @@
+{
+  "input": {"request_id":"00000000-0000-4000-8000-000000000001","customer_name":"Demo Customer","email":"customer@example.com","company":null,"request_type":"sales","message":"Please share information about your services.","source":"form","priority_hint":"normal","requires_response":true},
+  "output": {"request_id":"00000000-0000-4000-8000-000000000001","accepted":true,"classification":"sales","priority":"normal","route":"sales_queue","action":"log_only","status":"logged","logged":true,"email_status":"disabled","result_summary":"recorded"}
+}
