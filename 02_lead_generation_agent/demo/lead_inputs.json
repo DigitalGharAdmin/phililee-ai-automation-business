@@ -1,0 +1,28 @@
+{
+  "hot": {
+    "name": "Demo Buyer",
+    "email": "hot@example.com",
+    "message": "Please share general information.",
+    "source": "form",
+    "service_interest": "lead_generation",
+    "budget_range": "5000_plus",
+    "timeline": "immediate",
+    "company_size": "200_plus"
+  },
+  "warm": {
+    "name": "Demo Buyer",
+    "email": "warm@example.com",
+    "message": "Please share general information.",
+    "source": "form",
+    "service_interest": "other",
+    "budget_range": "500_1000",
+    "timeline": "within_3_months",
+    "company_size": "2_10"
+  },
+  "cold": {
+    "name": "Demo Buyer",
+    "email": "cold@example.com",
+    "message": "Please share general information.",
+    "source": "form"
+  }
+}

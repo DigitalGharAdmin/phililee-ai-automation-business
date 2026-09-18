@@ -7,6 +7,36 @@ prevention, and lead retrieval/listing. The Build 1 rubric remains unchanged.
 Build 3 adds optional structured AI assessment and deterministic reconciliation.
 An API key is optional; the application starts and provides fallback without it.
 
+
+## Portfolio overview
+
+A local lead qualification and approved follow-up demo for small businesses that
+need consistent inquiry triage without losing review control. It scores inquiries,
+stores and deduplicates leads, optionally adds AI assessment, and orchestrates
+human-approved follow-up with lightweight Google Sheets CRM logging.
+
+- Transparent deterministic scoring with optional structured AI and safe fallback.
+- Persistent lead capture, deduplication and retrieval with hidden identity keys.
+- Separate n8n intake and protected approval workflows; cold/rejected leads do not send.
+- State-preserving CRM reuse and sequential repeat-send protection.
+
+Stack: Python/FastAPI, Pydantic, SQLAlchemy/SQLite, OpenAI SDK, n8n, Google Sheets,
+Gmail, pytest and a Node.js offline workflow validator. This is a portfolio MVP,
+not an enterprise production service or an exactly-once messaging system.
+
+Architecture: lead source -> Workflow A -> FastAPI scoring/optional AI -> SQLite
+-> Sheets -> human approval -> Workflow B -> approved Gmail or reject/no-send.
+See [architecture and trust boundaries](docs/ARCHITECTURE.md).
+
+Demo: [eight scenarios](demo/DEMO_SCENARIOS.md), [Windows runbook](demo/DEMO_RUNBOOK.md),
+[sanitized evidence index](n8n/evidence/README.md), and
+[reliability audit](docs/BUILD_5_RELIABILITY.md). Present synthetic inputs, qualification,
+CRM state transitions, rejection, approval and repeat-send prevention using offline
+checks and the recorded live acceptance. Do not expose real inboxes or credentials.
+
+Roadmap: MASTER BUILD 04 internal Builds 1-5 are complete after the recorded checks.
+MASTER BUILD 05 is the next master step; no work on it is included here.
+
 ## Build 1 scope and architecture
 
 `POST /leads/qualify` -> `LeadCreate` validation -> `score_lead()` -> `LeadQualification`.
@@ -155,6 +185,9 @@ traces. Full field definitions are available in OpenAPI.
 
 ## Tests
 
+Build 5 verification: 119 Python tests and 31 offline workflow scenarios pass.
+See [coverage and reproduction](docs/BUILD_5_RELIABILITY.md).
+
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -q
 ```
@@ -177,9 +210,10 @@ English keywords cannot understand negation, intent context, or other languages;
 the length bonus does not establish genuine detail. Self-reported budget and size
 are not verified. Commercial fit should be reviewed before a business decision.
 
-## Next build
+## Roadmap position
 
-Build 5 — Reliability Tests, Demo Evidence, and Portfolio Packaging.
+Internal Build 5: Reliability Tests, Demo Evidence, and Portfolio Packaging.
+Next master step: MASTER BUILD 05 - n8n Business Automation (not started).
 
 Build 4 live manual acceptance is complete; Build 5 covers reliability tests, demo
 evidence and portfolio packaging. Later production hardening may add transactional

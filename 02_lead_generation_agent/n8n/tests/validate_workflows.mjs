@@ -217,4 +217,23 @@ for (const fail of ['Fetch Stored Lead','Find Approval CRM','Mark Sending','Send
 const uncertain=run(B,{rows:[row('awaiting_approval')],fail:'Mark Sent'});
 assert.equal(uncertain.sent,1); assert.equal(uncertain.rows[0].follow_up_status,'sending');
 assert.equal(run(B,{rows:uncertain.rows}).sent,0); cases++;
+// Build 5: malformed approval submissions must stop before any external operation.
+for (const input of [
+  {decision:'reject'}, {lead_id:'invalid',decision:'approve'},
+  {lead_id:ID,decision:'approve',notes:'x'.repeat(1001)},
+]) {
+  const result=run(B,{input,rows:[row('awaiting_approval')]});
+  assert(!result.error); assert.equal(result.sent,0); assert.equal(result.crmWrites,0);
+  assert(!result.visited.includes('Fetch Stored Lead')); cases++;
+}
+for (const decision of ['approve','reject']) {
+  const original={...row('awaiting_approval'),follow_up_sent_at:'2026-01-03T00:00:00Z'};
+  const result=run(B,{decision,rows:[original]});
+  assert(!result.error); assert.equal(result.sent,0); assert.equal(result.crmWrites,0);
+  assert.deepEqual(result.rows,[original]); cases++;
+}
+assert.equal(A.nodes[0].type,'n8n-nodes-base.webhook');
+assert.equal(B.nodes[0].type,'n8n-nodes-base.formTrigger');
+assert(reachable(B,'Eligibility Guard','Approved Decision'));
+assert(!reachable(B,'Prepare Rejection','Send Approved Gmail'));
 console.log(`PASS: two workflow graphs and ${cases} offline scenarios; zero network or live-service calls.`);
