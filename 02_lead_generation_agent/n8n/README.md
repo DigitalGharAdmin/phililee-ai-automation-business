@@ -1,7 +1,7 @@
 # Build 4: lead routing and approved follow-up
 
-Implementation and offline/static validation: complete. **Manual n8n acceptance:
-pending.** These are inactive import-ready templates, not exports from the user's
+Implementation and offline/static validation: complete. **Live manual acceptance:
+complete (operator reported).** These are inactive import-ready templates, not exports from the user's
 live instance. No live service was called during implementation.
 
 ```text
@@ -42,8 +42,9 @@ standard node versions: Webhook 2, HTTP Request 4.2, Code 2, IF 2.2, Google Shee
 4.6, Gmail 2.1, Respond to Webhook 1.4 and Form Trigger 2. Form Trigger 2 intentionally
 supports `responseNode` for the custom completion result. If your instance upgrades
 that node, confirm response behavior in the UI (or use its supported Form ending
-node). Exact native-export compatibility and credential execution remain manual
-acceptance items. n8n was not launched, upgraded, modified or published.
+node). The operator has confirmed credential execution and the accepted live flows.
+New imports still require local configuration checks. n8n was not launched, upgraded,
+modified or published during implementation or this documentation task.
 
 The Sheets node supports append-or-update by a matching column; it is not a
 transactional unique constraint. See the [official Sheets source](https://github.com/n8n-io/n8n/blob/master/packages/nodes-base/nodes/Google/Sheet/v2/actions/sheet/appendOrUpdate.operation.ts)
@@ -103,9 +104,28 @@ behavior using in-memory HTTP/Sheets/Gmail substitutes. It is not an n8n runtime
 emulator and cannot prove provider execution, authentication or import behavior.
 The Python suite verifies the unchanged backend without real OpenAI requests.
 
-Complete both per-workflow checklists before claiming end-to-end acceptance.
+The operator completed Build 4 live acceptance; see the
+[sanitized acceptance record](evidence/BUILD_4_MANUAL_ACCEPTANCE.md). Per-workflow
+checklists also retain additional reliability scenarios not reported as live-tested.
 Manual tests can invoke paid AI, write CRM data and send email; use authorized test
 accounts and fictional lead data. Store only sanitized evidence in `evidence/`.
 Do not place raw exports, credentials or personal screenshots in this directory.
 
 Next: Build 5 — Reliability Tests, Demo Evidence, and Portfolio Packaging.
+
+## Verified live manual acceptance
+
+Operator-reported results recorded on 2026-09-18: Workflow A created HOT and COLD
+CRM rows and reused an existing HOT row without resetting state or duplicating it.
+Workflow B rejected an eligible lead without Gmail, and approved a fresh HOT lead
+through an automatic end-to-end run with real delivery and persisted sent status.
+Reapproval returned `already_sent`, sent no second message and left Sheets unchanged.
+The protected form emitted `lead_id` correctly. Gmail required one credential
+reconnect before successful delivery; no credential details are recorded.
+
+The clean live workflows are `PH03 Lead Agent — Intake Routing` and
+`PH03 Lead Agent — Approval Follow-up`; the operator archived the old mixed/duplicate
+copy. Sheets schema refresh introduced blank mappings during reject testing;
+Mark Rejected was reduced to the six fields listed in the Workflow B README.
+Build 4 is complete. These observations do not establish concurrent exactly-once
+sending or acceptance of every additional failure scenario.

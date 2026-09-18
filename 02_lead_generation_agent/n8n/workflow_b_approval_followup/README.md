@@ -1,6 +1,6 @@
 # Workflow B: human approval and follow-up
 
-**Manual acceptance pending.** Import `approval_followup.sanitized.json` as
+**Live manual acceptance complete (operator reported).** Import `approval_followup.sanitized.json` as
 `PH03 Lead Agent — Approval Follow-up`.
 
 ## Purpose and architecture
@@ -102,3 +102,28 @@ shared error notifications must use fixed safe summaries, not raw provider error
 - [ ] Fail the post-send Sheets update: verify sending blocks a new attempt.
 - [ ] Confirm notifications omit contact details, message bodies and raw errors.
 - [ ] Confirm safe completion statuses render in the browser; record sanitized evidence only.
+
+The checklist includes additional scenarios not all reported as live-tested.
+Completed acceptance is recorded below and in the
+[sanitized evidence summary](../evidence/BUILD_4_MANUAL_ACCEPTANCE.md).
+
+## Verified live manual acceptance
+
+- Basic Auth remained enabled. Required `lead_id` was emitted correctly; required
+  decision remained approve/reject only; notes remained optional.
+- Reject: validation, stored-lead fetch, CRM lookup and eligibility succeeded.
+  The reject branch sent no Gmail and persisted `rejected` / `reject` / `not_sent`,
+  preserved notes and updated `last_action_at`.
+- Approve: a fresh HOT lead completed automatically without manual node execution.
+  Real Gmail delivery was confirmed. Sheets persisted `approved` / `approve` /
+  `sent`, populated `approved_at`, `follow_up_sent_at`, `last_action_at`, and
+  preserved notes. Approval Result returned `result=sent`.
+- Reapproval of the sent lead returned `action=stop`, `result=already_sent`;
+  no second Gmail was sent and the Sheets row remained unchanged.
+- Gmail OAuth required one manual reconnect, after which delivery succeeded.
+  Credentials and recipient details are intentionally excluded.
+
+During reject testing, a Sheets schema refresh exposed extra blank fields.
+The accepted live Mark Rejected mapping contains only `lead_id`, `approval_status`,
+`approval_decision`, `follow_up_status`, `last_action_at`, and `notes`. Remove extra
+blank mappings after schema refresh when configuring a new import.

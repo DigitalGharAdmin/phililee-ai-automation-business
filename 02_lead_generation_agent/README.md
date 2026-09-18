@@ -167,8 +167,8 @@ API calls.
 ## Current limitations
 
 Build 4 provides n8n routing, human approval, Gmail follow-up and Google Sheets
-CRM templates. Manual n8n acceptance is pending. Production migrations and
-deployment are not included.
+CRM templates. Build 4 live manual acceptance is complete (operator reported).
+Production migrations and deployment are not included.
 The FastAPI backend still has no authentication, Firebase, PostgreSQL, or deployment configuration.
 It is a local foundation, not a public production service.
 
@@ -181,8 +181,9 @@ are not verified. Commercial fit should be reviewed before a business decision.
 
 Build 5 — Reliability Tests, Demo Evidence, and Portfolio Packaging.
 
-Build 4 templates must pass manual acceptance before portfolio delivery. Later
-production hardening may add transactional messaging and broader CRM integrations.
+Build 4 live manual acceptance is complete; Build 5 covers reliability tests, demo
+evidence and portfolio packaging. Later production hardening may add transactional
+messaging and broader CRM integrations.
 
 ## Build 2 persistence architecture
 
@@ -345,7 +346,7 @@ with fictional lead data. This may incur API charges and does not persist a lead
 
 ## Build 4: n8n routing and approved follow-up
 
-Implementation/static validation: COMPLETE. Manual n8n acceptance: PENDING.
+Implementation/static validation: COMPLETE. Live manual acceptance: COMPLETE.
 
 Lead source -> n8n Webhook -> FastAPI /leads?use_ai=true -> stored qualification
 -> Google Sheets CRM -> human approval -> Gmail -> CRM status update.
@@ -357,5 +358,9 @@ email template only after approval. Cold and rejected paths cannot send email.
 
 See [Build 4 setup, safety limits and acceptance](n8n/README.md). The inactive JSON
 templates require local credential, node and connectivity confirmation. Validation
-used offline simulations and the existing Python tests; no live Gmail, Sheets,
-OpenAI or n8n action was performed. No exactly-once delivery guarantee is claimed.
+during implementation used offline simulations and the existing Python tests.
+The operator subsequently confirmed live intake/reuse, rejection, automatic HOT
+approval through real Gmail delivery, CRM persistence and repeat-send prevention.
+See [sanitized manual acceptance evidence](n8n/evidence/BUILD_4_MANUAL_ACCEPTANCE.md).
+No live actions were performed during this documentation task. No exactly-once
+delivery guarantee is claimed.

@@ -1,6 +1,6 @@
 # Workflow A: lead intake, routing and CRM logging
 
-**Manual acceptance pending.** Import `lead_intake_routing.sanitized.json` as
+**Live manual acceptance complete (operator reported).** Import `lead_intake_routing.sanitized.json` as
 `PH03 Lead Agent — Intake Routing`.
 
 ## Purpose and architecture
@@ -87,7 +87,7 @@ where n8n runs; adjust the backend URL when using containers or remote n8n.
 Any HTTP/Sheets failure stops the workflow. No failure creates an outbound email.
 Use fixed safe shared error summaries; never forward raw lead/API error content.
 
-## Manual acceptance checklist
+## Additional regression and reliability checklist
 
 - [ ] Import and confirm all node settings, credentials and response mode.
 - [ ] Submit fictional input with required fields through the test webhook.
@@ -101,3 +101,18 @@ Use fixed safe shared error summaries; never forward raw lead/API error content.
 - [ ] Duplicate CRM rows cause a controlled conflict, not an arbitrary update.
 - [ ] Check that a string beginning with `=` is stored as text, not a formula.
 - [ ] Capture sanitized evidence; do not claim concurrent exactly-once guarantees.
+
+The checklist includes additional scenarios not all reported as live-tested.
+Completed acceptance is recorded below and in the
+[sanitized evidence summary](../evidence/BUILD_4_MANUAL_ACCEPTANCE.md).
+
+## Verified live manual acceptance
+
+- New HOT: `crm_upserted`, `created=true`, `route=hot`, `approval_status=pending`,
+  `follow_up_status=awaiting_approval`.
+- Existing HOT: `crm_reused`, `created=false`; existing CRM state preserved and
+  no duplicate row. TRUE bypassed Upsert CRM Lead; FALSE used it.
+- New COLD: `route=cold`, `approval_status=not_required`, `follow_up_status=nurture`.
+- Sheets persisted the lead identifier/metadata, score, qualification, final
+  qualification/priority/action, AI status/summary, approval/follow-up status and
+  last-action timestamp. No actual identifiers or lead content are included here.
