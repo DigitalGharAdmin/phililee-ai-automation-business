@@ -2,7 +2,8 @@
 
 MASTER BUILD 05, internal Build 2: Core Business Automation Workflow.
 Build 1 defined the contracts. Build 2 provides an inactive sanitized workflow and
-offline verification; native import and live provider acceptance remain pending.
+offline verification. The operator has now completed the five Build 2 live acceptance
+scenarios; see [sanitized evidence](n8n/evidence/BUILD_2_MANUAL_ACCEPTANCE.md).
 
 Small businesses often copy form submissions into spreadsheets, sort inquiries and
 write repetitive replies manually. This reusable package will standardize intake,
@@ -56,7 +57,7 @@ patterns and Git ignore behavior. It prints only paths/categories on scan failur
 Pattern scanning supplements review and does not prove absence of every secret.
 
 Builds 1 and 2: COMPLETE for their documentation/implementation/offline scope.
-No live acceptance is claimed. Next: Build 3 — Reliability + Error Handling.
+Live acceptance is operator-confirmed; no live actions were rerun for closure. Next: Build 3 — Reliability + Error Handling.
 No later master build is started. Other projects are unchanged.
 
 ## Build 2 core workflow

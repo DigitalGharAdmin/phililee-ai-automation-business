@@ -1,7 +1,9 @@
 # MB05 Business Automation — Core Workflow
 
 Import `business_automation_core.sanitized.json` inactive. Implementation and offline
-checks are complete; native import and live acceptance remain unverified.
+checks are complete. Five live acceptance scenarios passed per the operator;
+[the acceptance record](../evidence/BUILD_2_MANUAL_ACCEPTANCE.md) separates observed
+results from offline coverage. New imports still need local configuration checks.
 
 ## Sequence and contract
 
@@ -25,9 +27,9 @@ failure 503, approval/reconciliation 202, logged/completed/duplicate 200.
 1. Confirm installed support for Webhook 2, Code 2, IF 2.2, HTTP Request 4.2,
    Sheets 4.6, Gmail 2.1 and Respond to Webhook 1.4. Offline tests are not native
    n8n execution; review every imported parameter before enabling.
-2. Allow the Node built-in `crypto` module on the Code task runner using local
-   `NODE_FUNCTION_ALLOW_BUILTIN=crypto` where required. It computes SHA-256 only.
-   Check this deployment prerequisite; do not broaden module permissions.
+2. No Code-node module allowlist is required. The fingerprint uses pure JavaScript
+   FNV-1a over UTF-16 code units with a 64-bit accumulator and fnv1a64-v1 prefix.
+   It is non-cryptographic and NOT for security; only deterministic comparison.
 3. Select local HTTP Basic Auth on Webhook, Sheets OAuth on every Sheets node,
    and replace `YOUR_GOOGLE_SHEET_ID` locally. Use a private Requests tab with the
    headers below. Recheck mappings after schema refresh; retain RAW write format.
@@ -71,8 +73,12 @@ Schema-valid suggestions are discarded after setting ai_status. Deterministic
 classification, priority and route always win. Refusal/incomplete/malformed output
 and provider failures fall back without preventing logging.
 
-The SHA-256 fingerprint covers all normalized fields except request_id in sorted
-key order. It is internal, not anonymization. One matching ID/fingerprint reuses
+The non-cryptographic fingerprint covers all normalized fields except request_id in
+sorted key order. It is internal, not anonymization, and collisions are possible.
+The live function was not supplied: byte-for-byte compatibility with existing live
+fingerprints is unverified. Earlier SHA-256 or different live-algorithm values will
+conflict on replay. Verify compatibility privately before replacing a deployed copy;
+never rewrite existing rows or reset send state automatically. One matching ID/fingerprint reuses
 stored classification/route/email state without AI, writes or Gmail. Changed content,
 multiple matches or corrupt state returns conflict. Failed/pending/unknown records
 are never automatically resumed by replaying intake.
@@ -84,8 +90,10 @@ are not_requested, disabled or pending_approval, preserving Build 1 terminology.
 
 ## Failures, verification and Build 3 handoff
 
-AI/Sheets retry 3 attempts with 2000 ms waits. Gmail never retries: an ambiguous
-response could already have delivered mail. Dedicated external-node error outputs
+AI, Sheets and Gmail use maxTries=3 with 2000 ms waits, matching the reported live
+configuration. This supersedes the original no-retry Gmail design. An ambiguous
+Gmail response can trigger duplicate delivery within these retries; the sending
+marker does not prevent retries inside one node. No exactly-once claim is made. Dedicated external-node error outputs
 handle expected failures; Never Error is disabled. Lookup/log failure prevents mail.
 Sheets Always Output Data intentionally permits absent-row handling and explicit
 checking of empty write output. Confirmation failure never opens the send gate.

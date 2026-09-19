@@ -2,7 +2,6 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
-import crypto from 'node:crypto';
 import {output as validateOutput} from '../../scripts/validate.mjs';
 const wf=JSON.parse(readFileSync(new URL('../workflow_core/business_automation_core.sanitized.json',import.meta.url),'utf8'));
 const fixture=JSON.parse(readFileSync(new URL('../../demo/contracts.json',import.meta.url),'utf8'));
@@ -12,6 +11,9 @@ function reachable(start,target,blocked=new Set()) {
   const todo=[start],seen=new Set();
   while(todo.length){const n=todo.shift();if(blocked.has(n)||seen.has(n))continue;if(n===target)return true;seen.add(n);todo.push(...children(n));}return false;
 }
+// Snapshot of the accepted Build 2 graph; runtime fixes must not rewire it.
+const expectedEdges=[["Webhook Intake",0,"Normalize Input"],["Normalize Input",0,"Validate Input"],["Validate Input",0,"Valid Request?"],["Apply Business Rules",0,"Find Existing Request"],["Find Existing Request",0,"Inspect Existing Request"],["Find Existing Request",1,"Prepare Failed Result"],["Inspect Existing Request",0,"Request Exists?"],["Prepare AI Input",0,"AI Classify Request"],["AI Classify Request",0,"Reconcile Classification"],["AI Classify Request",1,"AI Fallback"],["AI Fallback",0,"Reconcile Classification"],["AI Unavailable",0,"Reconcile Classification"],["Reconcile Classification",0,"Prepare Business Log"],["Prepare Business Log",0,"Log Business Request"],["Log Business Request",0,"Confirm Business Log"],["Log Business Request",1,"Prepare Failed Result"],["Confirm Business Log",0,"Log Confirmed?"],["Prepare Business Response",0,"Should Send Email?"],["Mark Sending",0,"Confirm Sending"],["Mark Sending",1,"Prepare Unknown Outcome"],["Confirm Sending",0,"Sending Confirmed?"],["Send Business Email",0,"Mark Sent"],["Send Business Email",1,"Prepare Unknown Outcome"],["Mark Sent",0,"Confirm Sent"],["Mark Sent",1,"Prepare Unknown Outcome"],["Confirm Sent",0,"Sent Confirmed?"],["Prepare Unknown Outcome",0,"Mark Unknown"],["Mark Unknown",0,"Restore Unknown Result"],["Mark Unknown",1,"Restore Unknown Result"],["Prepare Final Status",0,"Respond to Webhook"],["Valid Request?",0,"Apply Business Rules"],["Valid Request?",1,"Prepare Invalid Result"],["Request Exists?",0,"Prepare Final Status"],["Request Exists?",1,"AI Enabled?"],["AI Enabled?",0,"Prepare AI Input"],["AI Enabled?",1,"AI Unavailable"],["Log Confirmed?",0,"Prepare Business Response"],["Log Confirmed?",1,"Prepare Failed Result"],["Should Send Email?",0,"Mark Sending"],["Should Send Email?",1,"Prepare No Send Result"],["Sending Confirmed?",0,"Send Business Email"],["Sending Confirmed?",1,"Prepare Unknown Outcome"],["Sent Confirmed?",0,"Prepare Sent Result"],["Sent Confirmed?",1,"Prepare Unknown Outcome"],["Prepare Invalid Result",0,"Prepare Final Status"],["Prepare Sent Result",0,"Prepare Final Status"],["Prepare No Send Result",0,"Prepare Final Status"],["Prepare Failed Result",0,"Prepare Final Status"],["Restore Unknown Result",0,"Prepare Final Status"]];
+assert.deepEqual(Object.entries(wf.connections).flatMap(([name,p])=>p.main.flatMap((lane,i)=>lane.map(e=>[name,i,e.node]))),expectedEdges);
 assert.equal(nodes.size,wf.nodes.length);assert.equal(wf.active,false);
 assert.deepEqual(wf.pinData,{});assert.equal(wf.settings.saveDataErrorExecution,'none');assert.equal(wf.settings.saveManualExecutions,false);
 for(const n of wf.nodes){
@@ -37,7 +39,17 @@ assert(!reachable('Webhook Intake','Send Business Email',new Set(['Should Send E
 assert(!reachable('Webhook Intake','Send Business Email',new Set(['Sending Confirmed?'])));
 assert(!reachable('Prepare No Send Result','Send Business Email'));
 assert.equal(wf.nodes.filter(n=>n.type.endsWith('.gmail')).length,1);
-assert.equal(nodes.get('Send Business Email').retryOnFail,false);
+for(const name of ['Send Business Email','AI Classify Request']) {
+  assert.equal(nodes.get(name).retryOnFail,true);
+  assert.equal(nodes.get(name).maxTries,3);
+  assert.equal(nodes.get(name).waitBetweenTries,2000);
+}
+for(const n of wf.nodes.filter(n=>n.type.endsWith('.code'))) {
+  assert(!/\brequire\s*\(|\bimport\s*(?:\(|[{'"*])/.test(n.parameters.jsCode), 'Code nodes must not load modules');
+}
+const bodyExpression=nodes.get('AI Classify Request').parameters.jsonBody;
+assert(bodyExpression.startsWith('={{ ({') && bodyExpression.endsWith('}) }}'), 'Explicit parenthesized AI object required');
+new vm.Script(bodyExpression.slice(3,-2));
 assert.equal(nodes.get('AI Classify Request').parameters.options.response.response.neverError,false);
 assert.deepEqual(children('AI Classify Request',1),['AI Fallback']);
 assert(reachable('AI Fallback','Log Business Request'));
@@ -48,13 +60,16 @@ function run({input=fixture.input,config={},rows=[],ai='success',fail,empty,muta
   const history={};let name='Webhook Intake',items=[{json:{body:clone(input)}}];
   for(let step=0;name&&step<100;step++) {
     const n=nodes.get(name);state.visited.push(name);
-    const context={$json:items[0]?.json,$input:{first:()=>items[0],all:()=>items},$:key=>({first:()=>history[key][0],all:()=>history[key]}),require:key=>{assert.equal(key,'crypto');return crypto;}};
+    const context={$json:items[0]?.json,$input:{first:()=>items[0],all:()=>items},$:key=>({first:()=>history[key][0],all:()=>history[key]})};
     const evaluate=v=>typeof v==='string'&&v.startsWith('={{')?vm.runInNewContext('('+v.slice(3,-2)+')',context,{timeout:1000}):v;
     let port=0;
     if(name===fail){assert.equal(n.onError,'continueErrorOutput');port=1;items=[{json:{error:{message:'PRIVATE_PROVIDER_DIAGNOSTIC'}}}];}
     else if(n.type.endsWith('.code')) {
       items=vm.runInNewContext(`(function(){${n.parameters.jsCode}})()`,context,{timeout:1000});
-      if(name==='Apply Business Rules')Object.assign(items[0].json.config,config);
+      if(name==='Apply Business Rules') {
+        for(const key of ['email_enabled','acknowledgement_policy','ai_enabled'])assert.equal(items[0].json.config[key],false);
+        Object.assign(items[0].json.config,config);
+      }
     } else if(n.type.endsWith('.if')) {
       const c=n.parameters.conditions.conditions[0];assert.equal(c.operator.type,'boolean');const v=evaluate(c.leftValue);assert.equal(typeof v,'boolean');port=v?0:1;
     } else if(n.type.endsWith('.googleSheets')) {
@@ -103,6 +118,11 @@ for(const ai of ['success','error','malformed','extra','refusal','incomplete']){
   const r=run({config:aiEnabled,ai});assert.equal(r.aiCalls,1);assert.equal(r.result.classification,'sales');assert.equal(r.sent,0);assert.equal(r.rows[0].ai_status,ai==='success'?'success':'fallback');cases++;
 }
 assert.equal(first.rows[0].ai_status,'unavailable');
+assert.match(first.rows[0].payload_fingerprint,/^fnv1a64-v1:[0-9a-f]{16}$/);
+const reordered=run({input:Object.fromEntries(Object.entries(fixture.input).reverse())});
+assert.equal(reordered.rows[0].payload_fingerprint,first.rows[0].payload_fingerprint);
+const changed=run({input:{...fixture.input,message:'A different valid message.'}});
+assert.notEqual(changed.rows[0].payload_fingerprint,first.rows[0].payload_fingerprint);
 for(const email_status of ['sent','sending','unknown','pending_approval','disabled']){
   const rows=[{...first.rows[0],email_status,notes:'Keep review state'}];
   const r=run({config:{...enabled,...aiEnabled},rows});assert.equal(r.result.status,'duplicate');assert.equal(r.aiCalls,0);assert.equal(r.writes,0);assert.equal(r.sent,0);assert.deepEqual(r.rows,rows);cases++;

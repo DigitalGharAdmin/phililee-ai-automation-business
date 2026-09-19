@@ -19,7 +19,7 @@ flowchart TD
 ```
 
 Build 2 implements this graph in an inactive sanitized template with offline checks.
-Native import/live acceptance is pending; see [Build 2 notes](BUILD_2_NOTES.md).
+The operator confirmed five live acceptance scenarios; see [Build 2 notes](BUILD_2_NOTES.md).
 Duplicate lookup precedes AI to avoid unnecessary external processing. The sequence
 does not provide an atomic transaction across Sheets and Gmail.
 
@@ -48,7 +48,8 @@ by default. Keep AI summaries out of shared evidence.
 
 Before any send, verify the stored record and approval state again. Mark sending
 before Gmail and sent only afterward. An ambiguous outcome becomes unknown and
-requires reconciliation. Disable automatic Gmail retries; retries of reads may use
-bounded backoff. Sheets/Gmail are not transactional, so serialize the MVP and do
+requires reconciliation. Closure sync matches the verified live Gmail setting of
+3 attempts with 2000 ms waits, superseding the original disabled-retry proposal.
+Ambiguous delivery can duplicate mail within those retries. Sheets/Gmail are not transactional, so serialize the MVP and do
 not claim race-safe exactly-once behavior. Production concurrency needs an atomic
 claim/idempotency store or an equivalent proven mechanism, outside Build 1.
