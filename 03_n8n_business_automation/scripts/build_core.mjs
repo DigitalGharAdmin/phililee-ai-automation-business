@@ -17,7 +17,7 @@ function sheets(name,operation,values,lookup) {
   else {p.columns={mappingMode:'defineBelow',value:values,matchingColumns:['request_id'],schema:Object.keys(values).map(id=>({id,displayName:id,required:false,defaultMatch:id==='request_id',display:true,type:'string',canBeUsedToMatch:true})),attemptToConvertTypes:false,convertFieldsToString:false};p.options.cellFormat='RAW';}
   add(name,'googleSheets',p,{...retry,alwaysOutputData:true,onError:'continueErrorOutput'});
 }
-add('Webhook Intake','webhook',{httpMethod:'POST',path:'mb05-business-intake',authentication:'basicAuth',responseMode:'responseNode',options:{}});
+add('Webhook Intake','webhook',{httpMethod:'POST',path:'mb05-business-intake',authentication:'basicAuth',responseMode:'responseNode',options:{}},{notes:'After import, select MB05 Business Automation — Error Handler under Settings > Error Workflow. No live workflow ID is exported.',notesInFlow:true});
 code('Normalize Input',function(){
   const raw=$input.first().json.body;
   if(!raw || typeof raw!=='object' || Array.isArray(raw))return [{json:{normalized_request:null}}];
@@ -74,12 +74,14 @@ code('Inspect Existing Request',function(){
       ['sales','support','complaint','billing','general'].includes(r.classification)&&['low','normal','high'].includes(r.priority)&&
       r.route==={sales:'sales_queue',support:'support_queue',complaint:'review_queue',billing:'review_queue',general:'general_queue'}[r.classification]&&
       ['not_requested','disabled','pending_approval','sending','sent','failed','unknown'].includes(r.email_status);
-    result=valid?{request_id:r.request_id,accepted:true,classification:r.classification,priority:r.priority,route:r.route,action:'reuse',status:'duplicate',logged:true,email_status:r.email_status,result_summary:'existing_request'}:conflict();
+    // Uncertain workflow state takes precedence over a stale no-send email marker.
+    const email_status=r.status==='needs_reconciliation'?'unknown':r.email_status;
+    result=valid?{request_id:r.request_id,accepted:true,classification:r.classification,priority:r.priority,route:r.route,action:'reuse',status:'duplicate',logged:true,email_status,result_summary:'existing_request'}:conflict();
   }
   return [{json:{...ctx,exists:rows.length>0,result}}];
 });
 gate('Request Exists?','$json.exists');
-gate('AI Enabled?',"$json.config.ai_enabled === true && $json.config.ai_model !== 'YOUR_OPENAI_MODEL' && $json.config.ai_model.length > 0");
+gate('AI Enabled?',"$json.config.ai_enabled === true && typeof $json.config.ai_model === 'string' && $json.config.ai_model !== 'YOUR_OPENAI_MODEL' && $json.config.ai_model.trim().length > 0");
 code('Prepare AI Input',function(){
   const c=$json;let message=c.request.message;
   for(const value of [c.request.customer_name,c.request.email,c.request.company,c.request.request_id].filter(Boolean))message=message.replace(new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi'),'[redacted]');
@@ -92,7 +94,7 @@ code('AI Fallback',function(){return [{json:{ai_status:'fallback'}}];});
 code('AI Unavailable',function(){return [{json:{ai_status:'unavailable'}}];});
 code('Reconcile Classification',function(){
   const ctx=$('Apply Business Rules').first().json;
-  let ai_status=$json.ai_status||'fallback';
+  let ai_status=$json.ai_status==='unavailable'?'unavailable':'fallback';
   if($json.status==='completed')try{
     const out=$json.output.flatMap(o=>o.content||[]);
     if(out.some(o=>o.type==='refusal'))throw new Error('refusal');
@@ -134,9 +136,15 @@ code('Confirm Sending',function(){
   return [{json:{...c,confirmed:$json.request_id===c.request.request_id&&$json.email_status==='sending'}}];
 });
 gate('Sending Confirmed?','$json.confirmed');
-add('Send Business Email','gmail',{resource:'message',operation:'send',sendTo:'={{ $json.recipient }}',subject:'={{ $json.subject }}',emailType:'text',message:'={{ $json.body }}',options:{appendAttribution:false}},{...retry,onError:'continueErrorOutput'});
+add('Send Business Email','gmail',{resource:'message',operation:'send',sendTo:'={{ $json.recipient }}',subject:'={{ $json.subject }}',emailType:'text',message:'={{ $json.body }}',options:{appendAttribution:false}},{retryOnFail:false,alwaysOutputData:true,onError:'continueErrorOutput'});
+code('Confirm Gmail Acceptance',function(){
+  const response=$input.first().json;
+  const confirmed=!response.error&&typeof response.id==='string'&&/^[A-Za-z0-9_-]{1,200}$/.test(response.id);
+  return [{json:{confirmed}}]; // Never forward Gmail identifiers or response data.
+});
+gate('Gmail Accepted?','$json.confirmed');
 sheets('Mark Sent','update',{request_id:"={{ $('Prepare Business Response').first().json.request.request_id }}",email_status:'sent',status:'completed',action:'acknowledge',result_summary:'acknowledgement_sent',sent_at:'={{ new Date().toISOString() }}',last_action_at:'={{ new Date().toISOString() }}',updated_at:'={{ new Date().toISOString() }}'});
-code('Confirm Sent',function(){return [{json:{sent:$json.request_id===$('Prepare Business Response').first().json.request.request_id&&$json.email_status==='sent'}}];});
+code('Confirm Sent',function(){return [{json:{sent:$json.request_id===$('Prepare Business Response').first().json.request.request_id&&$json.email_status==='sent'&&$json.status==='completed'&&typeof $json.sent_at==='string'&&Number.isFinite(Date.parse($json.sent_at))}}];});
 gate('Sent Confirmed?','$json.sent');
 code('Prepare Sent Result',function(){
   const c=$('Prepare Business Response').first().json;
@@ -162,8 +170,8 @@ code('Prepare Final Status',function(){
   return [{json:Object.fromEntries(keys.map(k=>[k,r[k]]))}];
 });
 add('Respond to Webhook','respondToWebhook',{respondWith:'json',responseBody:'={{ $json }}',options:{responseCode:"={{ ({rejected:400,conflict:409,failed:503,awaiting_approval:202,needs_reconciliation:202})[$json.status] || 200 }}"}});
-for(const [a,b] of [['Webhook Intake','Normalize Input'],['Normalize Input','Validate Input'],['Validate Input','Valid Request?'],['Apply Business Rules','Find Existing Request'],['Find Existing Request','Inspect Existing Request'],['Inspect Existing Request','Request Exists?'],['Prepare AI Input','AI Classify Request'],['AI Classify Request','Reconcile Classification'],['AI Fallback','Reconcile Classification'],['AI Unavailable','Reconcile Classification'],['Reconcile Classification','Prepare Business Log'],['Prepare Business Log','Log Business Request'],['Log Business Request','Confirm Business Log'],['Confirm Business Log','Log Confirmed?'],['Prepare Business Response','Should Send Email?'],['Mark Sending','Confirm Sending'],['Confirm Sending','Sending Confirmed?'],['Send Business Email','Mark Sent'],['Mark Sent','Confirm Sent'],['Confirm Sent','Sent Confirmed?'],['Prepare Unknown Outcome','Mark Unknown'],['Mark Unknown','Restore Unknown Result'],['Prepare Final Status','Respond to Webhook']])edge(a,b);
-for(const [n,yes,no] of [['Valid Request?','Apply Business Rules','Prepare Invalid Result'],['Request Exists?','Prepare Final Status','AI Enabled?'],['AI Enabled?','Prepare AI Input','AI Unavailable'],['Log Confirmed?','Prepare Business Response','Prepare Failed Result'],['Should Send Email?','Mark Sending','Prepare No Send Result'],['Sending Confirmed?','Send Business Email','Prepare Unknown Outcome'],['Sent Confirmed?','Prepare Sent Result','Prepare Unknown Outcome']]){edge(n,yes);edge(n,no,1);}
+for(const [a,b] of [['Webhook Intake','Normalize Input'],['Normalize Input','Validate Input'],['Validate Input','Valid Request?'],['Apply Business Rules','Find Existing Request'],['Find Existing Request','Inspect Existing Request'],['Inspect Existing Request','Request Exists?'],['Prepare AI Input','AI Classify Request'],['AI Classify Request','Reconcile Classification'],['AI Fallback','Reconcile Classification'],['AI Unavailable','Reconcile Classification'],['Reconcile Classification','Prepare Business Log'],['Prepare Business Log','Log Business Request'],['Log Business Request','Confirm Business Log'],['Confirm Business Log','Log Confirmed?'],['Prepare Business Response','Should Send Email?'],['Mark Sending','Confirm Sending'],['Confirm Sending','Sending Confirmed?'],['Send Business Email','Confirm Gmail Acceptance'],['Confirm Gmail Acceptance','Gmail Accepted?'],['Mark Sent','Confirm Sent'],['Confirm Sent','Sent Confirmed?'],['Prepare Unknown Outcome','Mark Unknown'],['Mark Unknown','Restore Unknown Result'],['Prepare Final Status','Respond to Webhook']])edge(a,b);
+for(const [n,yes,no] of [['Valid Request?','Apply Business Rules','Prepare Invalid Result'],['Request Exists?','Prepare Final Status','AI Enabled?'],['AI Enabled?','Prepare AI Input','AI Unavailable'],['Log Confirmed?','Prepare Business Response','Prepare Failed Result'],['Should Send Email?','Mark Sending','Prepare No Send Result'],['Sending Confirmed?','Send Business Email','Prepare Unknown Outcome'],['Sent Confirmed?','Prepare Sent Result','Prepare Unknown Outcome'],['Gmail Accepted?','Mark Sent','Prepare Unknown Outcome']]){edge(n,yes);edge(n,no,1);}
 for(const n of ['Prepare Invalid Result','Prepare Sent Result','Prepare No Send Result','Prepare Failed Result','Restore Unknown Result'])edge(n,'Prepare Final Status');
 for(const n of ['Find Existing Request','Log Business Request'])edge(n,'Prepare Failed Result',1);
 edge('AI Classify Request','AI Fallback',1);

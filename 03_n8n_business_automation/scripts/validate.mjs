@@ -85,8 +85,17 @@ for(const file of new Set(files)) {
   if(file.endsWith('.json')) {
     const data=JSON.parse(content);
     if(data.nodes && (!file.endsWith('.sanitized.json') || data.nodes.some(n=>n.credentials || n.webhookId))) issues.push([file,'unsafe workflow export']);
+    if(data.nodes) {
+      if(data.id||data.versionId||data.meta||data.settings?.errorWorkflow)issues.push([file,'account-specific workflow metadata']);
+      for(const node of data.nodes) {
+        if(!/^(?:error-)?template-\d+$/.test(node.id||''))issues.push([file,'non-template node identifier']);
+        if(node.type.endsWith('.googleSheets')&&node.parameters.documentId?.value!=='YOUR_GOOGLE_SHEET_ID')issues.push([file,'non-placeholder document identifier']);
+      }
+    }
   }
 }
 for(const [file,category] of issues) process.stderr.write(`${file}: ${category}\n`);
 assert.equal(issues.length,0,'Publication scan failed (values withheld)');
 console.log(`PASS: ${cases} contract checks; docs, ignore safety, secret and privacy scans. No live calls.`);
+
+export const contractCases=cases;

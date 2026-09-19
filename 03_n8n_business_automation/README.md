@@ -1,6 +1,6 @@
 # AI-Powered Business Automation System
 
-MASTER BUILD 05, internal Build 2: Core Business Automation Workflow.
+MASTER BUILD 05, internal Build 3: Reliability + Error Handling.
 Build 1 defined the contracts. Build 2 provides an inactive sanitized workflow and
 offline verification. The operator has now completed the five Build 2 live acceptance
 scenarios; see [sanitized evidence](n8n/evidence/BUILD_2_MANUAL_ACCEPTANCE.md).
@@ -56,8 +56,9 @@ It validates fixtures and negative cases, required documentation, secret/privacy
 patterns and Git ignore behavior. It prints only paths/categories on scan failure.
 Pattern scanning supplements review and does not prove absence of every secret.
 
-Builds 1 and 2: COMPLETE for their documentation/implementation/offline scope.
-Live acceptance is operator-confirmed; no live actions were rerun for closure. Next: Build 3 — Reliability + Error Handling.
+Builds 1 and 2 are complete; Build 3 adds offline-verified reliability hardening.
+Build 2 live acceptance is operator-confirmed. Build 3 live tests remain pending.
+Next: Build 4 — Client Customization Layer (not started).
 No later master build is started. Other projects are unchanged.
 
 ## Build 2 core workflow
@@ -69,9 +70,19 @@ Matching duplicates return stored state without writes or resends. Invalid input
 cannot call providers. Email and AI remain disabled by default. Billing/complaint
 responses remain pending; no approval-resumption workflow is implemented.
 
-Run `node n8n/tests/validate_workflows.mjs`: 36 nodes, 41 offline workflow scenarios
-and 19 Build 1 contract checks. These use actual exported Code nodes and fake providers,
-not a live n8n runtime. Run `node scripts/build_core.mjs` to regenerate the JSON from
+Run `node n8n/tests/validate_workflows.mjs`: 81 core scenarios, 9 handler scenarios
+and 19 Build 1 contract checks (109 total). These use actual exported Code nodes and fake providers,
+not a live n8n runtime. Run `node scripts/build_core.mjs` and `node scripts/build_error_handler.mjs` to regenerate JSON from
 its reviewable source, then rerun validation. No dependency installation is needed.
 See [setup/schema/limits](n8n/workflow_core/README.md) and
 [contract reconciliations](docs/BUILD_2_NOTES.md).
+
+## Build 3 reliability
+
+Gmail attempts a send at most once per eligible execution and must return a bounded message ID before
+Mark Sent. Empty/error acknowledgements and final persistence failures require
+manual reconciliation. Existing records never trigger automatic resend. The shared
+error handler produces allowlisted metadata only; notifications default off.
+See [failure matrix, retry policy and reconciliation](docs/BUILD_3_RELIABILITY.md)
+and the [unexecuted live test plan](n8n/evidence/BUILD_3_MANUAL_TEST_PLAN.md).
+No live n8n, OpenAI, Gmail or Sheets calls were made in this build.

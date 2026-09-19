@@ -13,7 +13,8 @@ Valid -> Apply Business Rules -> Find Existing Request -> Inspect Existing Reque
 Existing -> duplicate/conflict response. New -> optional AI or unavailable branch
 -> Reconcile Classification -> Prepare Business Log -> Log Business Request ->
 confirm log -> Prepare Business Response -> Should Send Email?
-No send -> final result. Send -> Mark Sending -> confirm -> Gmail -> Mark Sent ->
+No send -> final result. Send -> Mark Sending -> confirm -> Gmail -> confirm
+Gmail acceptance -> Mark Sent ->
 confirm -> final result. External errors go to fixed safe result handlers.
 
 Webhook: POST `mb05-business-intake`, Basic Auth, responseNode. Submit the JSON body
@@ -88,12 +89,12 @@ category, a confirmed log and confirmed sending marker. Subject/body are fixed
 templates with a bounded local business label, not user or AI prose. No-send states
 are not_requested, disabled or pending_approval, preserving Build 1 terminology.
 
-## Failures, verification and Build 3 handoff
+## Failures and Build 3 verification
 
-AI, Sheets and Gmail use maxTries=3 with 2000 ms waits, matching the reported live
-configuration. This supersedes the original no-retry Gmail design. An ambiguous
-Gmail response can trigger duplicate delivery within these retries; the sending
-marker does not prevent retries inside one node. No exactly-once claim is made. Dedicated external-node error outputs
+AI/Sheets use maxTries=3 with 2000 ms waits. Build 3 disables Gmail retries,
+superseding the historical Build 2 live setting. Missing/error/malformed Gmail
+acknowledgements route to unknown and cannot reach Mark Sent. A confirmed Gmail
+message ID means API acceptance, not proof of inbox delivery. Dedicated external-node error outputs
 handle expected failures; Never Error is disabled. Lookup/log failure prevents mail.
 Sheets Always Output Data intentionally permits absent-row handling and explicit
 checking of empty write output. Confirmation failure never opens the send gate.
@@ -110,9 +111,19 @@ state or duplicate rows/delivery. Serialize the MVP, including intake versus man
 updates. No exactly-once guarantee exists. Execution data saving is disabled in the
 export; check deployment-wide retention, and never share raw provider diagnostics.
 
-Run `node n8n/tests/validate_workflows.mjs`: 41 fake-provider scenarios plus Build 1
-checks. Build 3 will address shared safe error handling, reconciliation procedures
-and stronger reliability controls; none of that separate workflow is built here.
+Run `node n8n/tests/validate_workflows.mjs` for core and handler failure scenarios
+plus Build 1 checks. Build 3 shared safe error handling and reconciliation guidance
+are implemented offline; live acceptance is pending. See
+[the current reliability policy](../../docs/BUILD_3_RELIABILITY.md).
 
 Sources: [n8n Sheets mapping implementation](https://github.com/n8n-io/n8n/blob/master/packages/nodes-base/nodes/Google/Sheet/v2/actions/sheet/update.operation.ts),
 [OpenAI structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs).
+
+## Assign the shared error workflow after import
+
+Import MB05 Business Automation — Error Handler first. In this core workflow open
+Settings > Error Workflow and select MB05 Business Automation — Error Handler,
+then save locally. No live workflow ID is hard-coded in the sanitized JSON.
+Do not select the handler as its own error workflow. Its notification switch is
+off by default; configure any recipient and Gmail credentials privately. Handled
+AI/Sheets/Gmail recovery outputs do not necessarily trigger workflow-level errors.

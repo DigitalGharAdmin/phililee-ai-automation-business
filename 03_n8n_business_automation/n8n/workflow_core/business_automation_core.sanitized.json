@@ -17,7 +17,9 @@
         0
       ],
       "id": "template-1",
-      "onError": "stopWorkflow"
+      "onError": "stopWorkflow",
+      "notes": "After import, select MB05 Business Automation — Error Handler under Settings > Error Workflow. No live workflow ID is exported.",
+      "notesInFlow": true
     },
     {
       "parameters": {
@@ -157,7 +159,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "return (function(){\n  const ctx=$('Apply Business Rules').first().json;\n  const rows=$input.all().map(i=>i.json).filter(r=>Object.keys(r).length);\n  const conflict=()=>({request_id:ctx.request.request_id,accepted:false,classification:null,priority:null,route:'none',action:'none',status:'conflict',logged:false,email_status:'not_requested',result_summary:'id_conflict'});\n  let result=null;\n  if(rows.length) {\n    const r=rows[0];\n    const valid=rows.length===1&&r.request_id===ctx.request.request_id&&r.payload_fingerprint===ctx.payload_fingerprint&&\n      ['sales','support','complaint','billing','general'].includes(r.classification)&&['low','normal','high'].includes(r.priority)&&\n      r.route==={sales:'sales_queue',support:'support_queue',complaint:'review_queue',billing:'review_queue',general:'general_queue'}[r.classification]&&\n      ['not_requested','disabled','pending_approval','sending','sent','failed','unknown'].includes(r.email_status);\n    result=valid?{request_id:r.request_id,accepted:true,classification:r.classification,priority:r.priority,route:r.route,action:'reuse',status:'duplicate',logged:true,email_status:r.email_status,result_summary:'existing_request'}:conflict();\n  }\n  return [{json:{...ctx,exists:rows.length>0,result}}];\n})();"
+        "jsCode": "return (function(){\n  const ctx=$('Apply Business Rules').first().json;\n  const rows=$input.all().map(i=>i.json).filter(r=>Object.keys(r).length);\n  const conflict=()=>({request_id:ctx.request.request_id,accepted:false,classification:null,priority:null,route:'none',action:'none',status:'conflict',logged:false,email_status:'not_requested',result_summary:'id_conflict'});\n  let result=null;\n  if(rows.length) {\n    const r=rows[0];\n    const valid=rows.length===1&&r.request_id===ctx.request.request_id&&r.payload_fingerprint===ctx.payload_fingerprint&&\n      ['sales','support','complaint','billing','general'].includes(r.classification)&&['low','normal','high'].includes(r.priority)&&\n      r.route==={sales:'sales_queue',support:'support_queue',complaint:'review_queue',billing:'review_queue',general:'general_queue'}[r.classification]&&\n      ['not_requested','disabled','pending_approval','sending','sent','failed','unknown'].includes(r.email_status);\n    // Uncertain workflow state takes precedence over a stale no-send email marker.\n    const email_status=r.status==='needs_reconciliation'?'unknown':r.email_status;\n    result=valid?{request_id:r.request_id,accepted:true,classification:r.classification,priority:r.priority,route:r.route,action:'reuse',status:'duplicate',logged:true,email_status,result_summary:'existing_request'}:conflict();\n  }\n  return [{json:{...ctx,exists:rows.length>0,result}}];\n})();"
       },
       "name": "Inspect Existing Request",
       "type": "n8n-nodes-base.code",
@@ -216,7 +218,7 @@
           "conditions": [
             {
               "id": "condition",
-              "leftValue": "={{ $json.config.ai_enabled === true && $json.config.ai_model !== 'YOUR_OPENAI_MODEL' && $json.config.ai_model.length > 0 }}",
+              "leftValue": "={{ $json.config.ai_enabled === true && typeof $json.config.ai_model === 'string' && $json.config.ai_model !== 'YOUR_OPENAI_MODEL' && $json.config.ai_model.trim().length > 0 }}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
@@ -319,7 +321,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "return (function(){\n  const ctx=$('Apply Business Rules').first().json;\n  let ai_status=$input.first().json.ai_status||'fallback';\n  if($input.first().json.status==='completed')try{\n    const out=$input.first().json.output.flatMap(o=>o.content||[]);\n    if(out.some(o=>o.type==='refusal'))throw new Error('refusal');\n    const value=JSON.parse(out.filter(o=>o.type==='output_text').map(o=>o.text).join(''));\n    if(Object.keys(value).sort().join(',')!=='classification,priority,summary'||!['sales','support','complaint','billing','general'].includes(value.classification)||!['low','normal','high'].includes(value.priority)||typeof value.summary!=='string'||!value.summary.trim()||value.summary.length>300)throw new Error('invalid');\n    ai_status='success'; // Suggestions are advisory; no changes to gates or route.\n  }catch{ai_status='fallback';}\n  let action='log_only',status='logged',email_status='not_requested',result_summary='recorded';\n  if(ctx.request.requires_response) {\n    if(ctx.config.email_enabled!==true)email_status='disabled';\n    else if(['billing','complaint'].includes(ctx.classification)||ctx.config.acknowledgement_policy!==true){action='request_approval';status='awaiting_approval';email_status='pending_approval';result_summary='approval_required';}\n    else {action='acknowledge';email_status='not_requested';}\n  }\n  return [{json:{...ctx,ai_status,action,status,email_status,result_summary}}];\n})();"
+        "jsCode": "return (function(){\n  const ctx=$('Apply Business Rules').first().json;\n  let ai_status=$input.first().json.ai_status==='unavailable'?'unavailable':'fallback';\n  if($input.first().json.status==='completed')try{\n    const out=$input.first().json.output.flatMap(o=>o.content||[]);\n    if(out.some(o=>o.type==='refusal'))throw new Error('refusal');\n    const value=JSON.parse(out.filter(o=>o.type==='output_text').map(o=>o.text).join(''));\n    if(Object.keys(value).sort().join(',')!=='classification,priority,summary'||!['sales','support','complaint','billing','general'].includes(value.classification)||!['low','normal','high'].includes(value.priority)||typeof value.summary!=='string'||!value.summary.trim()||value.summary.length>300)throw new Error('invalid');\n    ai_status='success'; // Suggestions are advisory; no changes to gates or route.\n  }catch{ai_status='fallback';}\n  let action='log_only',status='logged',email_status='not_requested',result_summary='recorded';\n  if(ctx.request.requires_response) {\n    if(ctx.config.email_enabled!==true)email_status='disabled';\n    else if(['billing','complaint'].includes(ctx.classification)||ctx.config.acknowledgement_policy!==true){action='request_approval';status='awaiting_approval';email_status='pending_approval';result_summary='approval_required';}\n    else {action='acknowledge';email_status='not_requested';}\n  }\n  return [{json:{...ctx,ai_status,action,status,email_status,result_summary}}];\n})();"
       },
       "name": "Reconcile Classification",
       "type": "n8n-nodes-base.code",
@@ -885,9 +887,58 @@
       ],
       "id": "template-25",
       "onError": "continueErrorOutput",
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 2000
+      "retryOnFail": false,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return (function(){\n  const response=$input.first().json;\n  const confirmed=!response.error&&typeof response.id==='string'&&/^[A-Za-z0-9_-]{1,200}$/.test(response.id);\n  return [{json:{confirmed}}]; // Never forward Gmail identifiers or response data.\n})();"
+      },
+      "name": "Confirm Gmail Acceptance",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        280,
+        960
+      ],
+      "id": "template-26",
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "condition",
+              "leftValue": "={{ $json.confirmed }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Gmail Accepted?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        560,
+        960
+      ],
+      "id": "template-27",
+      "onError": "stopWorkflow"
     },
     {
       "parameters": {
@@ -1003,10 +1054,10 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.6,
       "position": [
-        280,
+        840,
         960
       ],
-      "id": "template-26",
+      "id": "template-28",
       "onError": "continueErrorOutput",
       "retryOnFail": true,
       "maxTries": 3,
@@ -1016,16 +1067,16 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "return (function(){return [{json:{sent:$input.first().json.request_id===$('Prepare Business Response').first().json.request.request_id&&$input.first().json.email_status==='sent'}}];})();"
+        "jsCode": "return (function(){return [{json:{sent:$input.first().json.request_id===$('Prepare Business Response').first().json.request.request_id&&$input.first().json.email_status==='sent'&&$input.first().json.status==='completed'&&typeof $input.first().json.sent_at==='string'&&Number.isFinite(Date.parse($input.first().json.sent_at))}}];})();"
       },
       "name": "Confirm Sent",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        560,
+        1120,
         960
       ],
-      "id": "template-27",
+      "id": "template-29",
       "onError": "stopWorkflow"
     },
     {
@@ -1057,36 +1108,6 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        840,
-        960
-      ],
-      "id": "template-28",
-      "onError": "stopWorkflow"
-    },
-    {
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "jsCode": "return (function(){\n  const c=$('Prepare Business Response').first().json;\n  return [{json:{result:{request_id:c.request.request_id,accepted:true,classification:c.classification,priority:c.priority,route:c.route,action:'acknowledge',status:'completed',logged:true,email_status:'sent',result_summary:'acknowledgement_sent'}}}];\n})();"
-      },
-      "name": "Prepare Sent Result",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1120,
-        960
-      ],
-      "id": "template-29",
-      "onError": "stopWorkflow"
-    },
-    {
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "jsCode": "return (function(){\n  const c=$('Prepare Business Response').first().json;\n  return [{json:{result:{request_id:c.request.request_id,accepted:true,classification:c.classification,priority:c.priority,route:c.route,action:c.action,status:c.status,logged:true,email_status:c.email_status,result_summary:c.result_summary}}}];\n})();"
-      },
-      "name": "Prepare No Send Result",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
         1400,
         960
       ],
@@ -1096,9 +1117,9 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "return (function(){\n  const c=$('Apply Business Rules').first().json;\n  return [{json:{result:{request_id:c.request.request_id,accepted:true,classification:c.classification,priority:c.priority,route:c.route,action:'none',status:'failed',logged:false,email_status:'not_requested',result_summary:'operation_failed'}}}];\n})();"
+        "jsCode": "return (function(){\n  const c=$('Prepare Business Response').first().json;\n  return [{json:{result:{request_id:c.request.request_id,accepted:true,classification:c.classification,priority:c.priority,route:c.route,action:'acknowledge',status:'completed',logged:true,email_status:'sent',result_summary:'acknowledgement_sent'}}}];\n})();"
       },
-      "name": "Prepare Failed Result",
+      "name": "Prepare Sent Result",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -1111,9 +1132,9 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "return (function(){\n  const c=$('Prepare Business Response').first().json;\n  return [{json:{result:{request_id:c.request.request_id,accepted:true,classification:c.classification,priority:c.priority,route:c.route,action:'acknowledge',status:'needs_reconciliation',logged:true,email_status:'unknown',result_summary:'reconciliation_required'}}}];\n})();"
+        "jsCode": "return (function(){\n  const c=$('Prepare Business Response').first().json;\n  return [{json:{result:{request_id:c.request.request_id,accepted:true,classification:c.classification,priority:c.priority,route:c.route,action:c.action,status:c.status,logged:true,email_status:c.email_status,result_summary:c.result_summary}}}];\n})();"
       },
-      "name": "Prepare Unknown Outcome",
+      "name": "Prepare No Send Result",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -1121,6 +1142,36 @@
         1200
       ],
       "id": "template-32",
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return (function(){\n  const c=$('Apply Business Rules').first().json;\n  return [{json:{result:{request_id:c.request.request_id,accepted:true,classification:c.classification,priority:c.priority,route:c.route,action:'none',status:'failed',logged:false,email_status:'not_requested',result_summary:'operation_failed'}}}];\n})();"
+      },
+      "name": "Prepare Failed Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        1200
+      ],
+      "id": "template-33",
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return (function(){\n  const c=$('Prepare Business Response').first().json;\n  return [{json:{result:{request_id:c.request.request_id,accepted:true,classification:c.classification,priority:c.priority,route:c.route,action:'acknowledge',status:'needs_reconciliation',logged:true,email_status:'unknown',result_summary:'reconciliation_required'}}}];\n})();"
+      },
+      "name": "Prepare Unknown Outcome",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        840,
+        1200
+      ],
+      "id": "template-34",
       "onError": "stopWorkflow"
     },
     {
@@ -1217,10 +1268,10 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.6,
       "position": [
-        560,
+        1120,
         1200
       ],
-      "id": "template-33",
+      "id": "template-35",
       "onError": "continueErrorOutput",
       "retryOnFail": true,
       "maxTries": 3,
@@ -1236,10 +1287,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        840,
+        1400,
         1200
       ],
-      "id": "template-34",
+      "id": "template-36",
       "onError": "stopWorkflow"
     },
     {
@@ -1251,10 +1302,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1120,
-        1200
+        0,
+        1440
       ],
-      "id": "template-35",
+      "id": "template-37",
       "onError": "stopWorkflow"
     },
     {
@@ -1269,10 +1320,10 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.4,
       "position": [
-        1400,
-        1200
+        280,
+        1440
       ],
-      "id": "template-36",
+      "id": "template-38",
       "onError": "stopWorkflow"
     }
   ],
@@ -1496,7 +1547,7 @@
       "main": [
         [
           {
-            "node": "Mark Sent",
+            "node": "Confirm Gmail Acceptance",
             "type": "main",
             "index": 0
           }
@@ -1504,6 +1555,17 @@
         [
           {
             "node": "Prepare Unknown Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirm Gmail Acceptance": {
+      "main": [
+        [
+          {
+            "node": "Gmail Accepted?",
             "type": "main",
             "index": 0
           }
@@ -1692,6 +1754,24 @@
         [
           {
             "node": "Prepare Sent Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Unknown Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Accepted?": {
+      "main": [
+        [
+          {
+            "node": "Mark Sent",
             "type": "main",
             "index": 0
           }

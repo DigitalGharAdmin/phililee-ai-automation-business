@@ -44,6 +44,9 @@
 14. Error workflow may notify operators using only fixed error category, stage and
     time. No raw message, payload, email address, headers or provider error text.
 
-Build 2 tests the core transitions and guards offline. Approval resumption and
-shared error notifications remain handoffs, not executable features. See
-[Build 2 notes](BUILD_2_NOTES.md) for reconciliations and limits.
+Build 3 preserves these result terms and adds a safe shared notification workflow.
+Approval resumption remains deferred. Gmail automatic retries are disabled; only
+a confirmed Gmail success and confirmed final persistence can return completed.
+All existing matching rows are reuse-only. A stored needs_reconciliation status
+overrides a stale no-send marker to unknown in the returned duplicate result.
+See [Build 3 reliability](BUILD_3_RELIABILITY.md) for current policy and limits.
