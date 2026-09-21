@@ -1,5 +1,8 @@
 // Deterministic sanitized export builder. Runs locally; never calls providers.
 import {writeFileSync} from 'node:fs';
+import {isMain,loadConfig,runtimeConfig} from './client_config.mjs';
+export function buildCore(client=loadConfig(),clientNamed=false){
+const trusted=runtimeConfig(client);
 const nodes=[], connections={};
 function add(name,type,parameters,extra={}) {
   const versions={webhook:2,code:2,if:2.2,googleSheets:4.6,httpRequest:4.2,gmail:2.1,respondToWebhook:1.4};
@@ -50,11 +53,11 @@ gate('Valid Request?','$json.valid');
 code('Prepare Invalid Result',function(){return [{json:{result:{request_id:$json.safe_id,accepted:false,classification:null,priority:null,route:'none',action:'none',status:'rejected',logged:false,email_status:'not_requested',result_summary:'invalid_input'}}}];});
 code('Apply Business Rules',function(){
   const request=$json.normalized_request;
-  // Edit only trusted local configuration, never merge webhook fields into it.
-  const config={business_name:'Your Business',email_enabled:false,acknowledgement_policy:false,ai_enabled:false,ai_model:'YOUR_OPENAI_MODEL'};
+  // Generated from validated build-time config; never merge webhook fields into it.
+  const config=TRUSTED_CLIENT_CONFIG;
   const classification=request.request_type;
-  const priority=classification==='complaint'||request.priority_hint==='high'?'high':classification==='general'&&request.priority_hint==='low'?'low':'normal';
-  const route={sales:'sales_queue',support:'support_queue',complaint:'review_queue',billing:'review_queue',general:'general_queue'}[classification];
+  const priority=classification==='complaint'?config.priority.complaint:request.priority_hint==='high'?config.priority.high_hint:classification==='general'&&request.priority_hint==='low'?config.priority.general_low_hint:config.priority.default;
+  const route=config.routing[classification];
   const canonical=JSON.stringify(Object.fromEntries(Object.keys(request).filter(k=>k!=='request_id').sort().map(k=>[k,request[k]])));
   // FNV-1a over UTF-16 code units: deterministic comparison only, NOT security.
   let hash=0xcbf29ce484222325n;
@@ -72,7 +75,7 @@ code('Inspect Existing Request',function(){
     const r=rows[0];
     const valid=rows.length===1&&r.request_id===ctx.request.request_id&&r.payload_fingerprint===ctx.payload_fingerprint&&
       ['sales','support','complaint','billing','general'].includes(r.classification)&&['low','normal','high'].includes(r.priority)&&
-      r.route==={sales:'sales_queue',support:'support_queue',complaint:'review_queue',billing:'review_queue',general:'general_queue'}[r.classification]&&
+      typeof r.route==='string'&&/^[a-z][a-z0-9_-]{0,63}$/.test(r.route)&&r.route!=='none'&&
       ['not_requested','not_sent','disabled','pending_approval','sending','sent','failed','unknown'].includes(r.email_status);
     // Uncertain workflow state takes precedence over a stale no-send email marker.
     const email_status=r.status==='needs_reconciliation'?'unknown':r.email_status;
@@ -112,7 +115,7 @@ code('Reconcile Classification',function(){
 });
 code('Prepare Business Log',function(){
   const c=$json, t=c.received_at;
-  return [{json:{...c,row:{request_id:c.request.request_id,payload_fingerprint:c.payload_fingerprint,received_at:t,created_at:t,updated_at:t,customer_name:c.request.customer_name,email:c.request.email,company:c.request.company||'',request_type:c.request.request_type,source:c.request.source,classification:c.classification,priority:c.priority,route:c.route,action:c.action,status:c.status,ai_status:c.ai_status,result_summary:c.result_summary,requires_response:c.request.requires_response,email_status:c.email_status,last_action_at:t,notes:'',approval_status:c.action==='request_approval'?'pending':c.action==='acknowledge'?'policy_allowed':'not_required',response_version:'ack-v1',sent_at:''}}}];
+  return [{json:{...c,row:{request_id:c.request.request_id,payload_fingerprint:c.payload_fingerprint,received_at:t,created_at:t,updated_at:t,customer_name:c.request.customer_name,email:c.request.email,company:c.request.company||'',request_type:c.request.request_type,source:c.request.source,classification:c.classification,priority:c.priority,route:c.route,action:c.action,status:c.status,ai_status:c.ai_status,result_summary:c.result_summary,requires_response:c.request.requires_response,email_status:c.email_status,last_action_at:t,notes:'',approval_status:c.action==='request_approval'?'pending':c.action==='acknowledge'?'policy_allowed':'not_required',response_version:c.config.email.response_version,sent_at:''}}}];
 });
 const columns=['request_id','payload_fingerprint','received_at','created_at','updated_at','customer_name','email','company','request_type','source','classification','priority','route','action','status','ai_status','result_summary','requires_response','email_status','last_action_at','notes','approval_status','response_version','sent_at'];
 sheets('Log Business Request','appendOrUpdate',Object.fromEntries(columns.map(k=>[k,`={{ $json.row.${k} }}`])));
@@ -126,8 +129,7 @@ gate('Log Confirmed?','$json.logged');
 code('Prepare Business Response',function(){
   const c=$json;
   const send=c.logged===true&&c.config.email_enabled===true&&c.config.acknowledgement_policy===true&&c.request.requires_response===true&&['sales','support','general'].includes(c.classification)&&c.action==='acknowledge'&&c.email_status==='not_requested';
-  const label=String(c.config.business_name).replace(/[\r\n]/g,' ').slice(0,100);
-  return [{json:{...c,send,recipient:c.request.email,subject:'We received your inquiry',body:`Thank you for contacting ${label}. We have received your inquiry and will review it. This acknowledgement does not confirm any purchase, refund or service commitment.`}}];
+  return [{json:{...c,send,recipient:c.request.email,subject:c.config.email.ack_subject,body:c.config.email.ack_body}}];
 });
 gate('Should Send Email?','$json.send');
 sheets('Mark Sending','update',{request_id:'={{ $json.request.request_id }}',email_status:'sending',last_action_at:'={{ new Date().toISOString() }}',updated_at:'={{ new Date().toISOString() }}'});
@@ -207,5 +209,8 @@ edge('Restore Send Failed Result','Prepare Final Status');
 for(const n of ['Mark Sending','Mark Sent','Mark Send Failed'])edge(n,'Prepare Unknown Outcome',1);
 edge('Mark Unknown','Restore Unknown Result',1);
 const workflow={name:'MB05 Business Automation \u2014 Core Workflow',nodes,connections,active:false,settings:{executionOrder:'v1',saveDataErrorExecution:'none',saveDataSuccessExecution:'none',saveManualExecutions:false,saveExecutionProgress:false},pinData:{},tags:[]};
-writeFileSync(new URL('../n8n/workflow_core/business_automation_core.sanitized.json',import.meta.url),JSON.stringify(workflow,null,2)+'\n');
-console.log(`Generated ${nodes.length} inactive sanitized nodes.`);
+nodes.find(n=>n.name==='Apply Business Rules').parameters.jsCode=nodes.find(n=>n.name==='Apply Business Rules').parameters.jsCode.replace('TRUSTED_CLIENT_CONFIG',()=>JSON.stringify(trusted));
+if(clientNamed){workflow.name='MB05 Business Automation - '+client.client_id+' - Core Workflow';const webhook=nodes.find(n=>n.name==='Webhook Intake');webhook.parameters.path='mb05-'+client.client_id+'-intake';webhook.notes='After import, select MB05 Business Automation - '+client.client_id+' - Error Handler under Settings > Error Workflow. No live workflow ID is exported.';}
+return workflow;
+}
+if(isMain(import.meta.url)){const workflow=buildCore();writeFileSync(new URL('../n8n/workflow_core/business_automation_core.sanitized.json',import.meta.url),JSON.stringify(workflow,null,2)+'\n');console.log('Generated canonical core.');}

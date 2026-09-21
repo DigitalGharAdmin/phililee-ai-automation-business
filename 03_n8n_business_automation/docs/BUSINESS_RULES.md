@@ -55,3 +55,9 @@ See [Build 3 reliability](BUILD_3_RELIABILITY.md) for current policy and limits.
 Transport/auth/network AI errors use ai_status=unavailable; malformed model output
 uses fallback. Notification-disabled runs reach Notification Outcome as disabled.
 Operator live acceptance A?H is complete; see the Build 3 reliability record.
+
+Build 4 obtains identity, routing, email content/version and enable flags from
+validated build-time client config. Complaint/high-hint/general-low priority remain
+fixed; only the otherwise-normal default is configurable. Billing/complaint approval,
+requires_response, persistence, duplicate and reconciliation gates cannot be disabled
+by configuration. Existing rows retain their stored route after mapping changes.

@@ -1,10 +1,10 @@
 {
-  "name": "MB05 Business Automation — Core Workflow",
+  "name": "MB05 Business Automation - sales-demo - Core Workflow",
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "mb05-business-intake",
+        "path": "mb05-sales-demo-intake",
         "authentication": "basicAuth",
         "responseMode": "responseNode",
         "options": {}
@@ -18,7 +18,7 @@
       ],
       "id": "template-1",
       "onError": "stopWorkflow",
-      "notes": "After import, select MB05 Business Automation — Error Handler under Settings > Error Workflow. No live workflow ID is exported.",
+      "notes": "After import, select MB05 Business Automation - sales-demo - Error Handler under Settings > Error Workflow. No live workflow ID is exported.",
       "notesInFlow": true
     },
     {
@@ -104,7 +104,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "return (function(){\n  const request=$input.first().json.normalized_request;\n  // Generated from validated build-time config; never merge webhook fields into it.\n  const config={\"client_id\":\"example-client\",\"business_name\":\"Your Business\",\"email_enabled\":false,\"acknowledgement_policy\":false,\"ai_enabled\":false,\"operator_notifications_enabled\":false,\"ai_model\":\"YOUR_OPENAI_MODEL\",\"routing\":{\"sales\":\"sales_queue\",\"support\":\"support_queue\",\"complaint\":\"review_queue\",\"billing\":\"review_queue\",\"general\":\"general_queue\"},\"priority\":{\"complaint\":\"high\",\"high_hint\":\"high\",\"default\":\"normal\",\"general_low_hint\":\"low\"},\"email\":{\"ack_subject\":\"We received your inquiry\",\"ack_body\":\"Thank you for contacting Your Business. We have received your inquiry and will review it. This acknowledgement does not confirm any purchase, refund or service commitment.\",\"response_version\":\"ack-v1\"}};\n  const classification=request.request_type;\n  const priority=classification==='complaint'?config.priority.complaint:request.priority_hint==='high'?config.priority.high_hint:classification==='general'&&request.priority_hint==='low'?config.priority.general_low_hint:config.priority.default;\n  const route=config.routing[classification];\n  const canonical=JSON.stringify(Object.fromEntries(Object.keys(request).filter(k=>k!=='request_id').sort().map(k=>[k,request[k]])));\n  // FNV-1a over UTF-16 code units: deterministic comparison only, NOT security.\n  let hash=0xcbf29ce484222325n;\n  for(let i=0;i<canonical.length;i++)hash=BigInt.asUintN(64,(hash^BigInt(canonical.charCodeAt(i)))*0x100000001b3n);\n  const payload_fingerprint='fnv1a64-v1:'+hash.toString(16).padStart(16,'0');\n  return [{json:{request,config,payload_fingerprint,classification,priority,route,ai_status:'unavailable',received_at:new Date().toISOString()}}];\n})();"
+        "jsCode": "return (function(){\n  const request=$input.first().json.normalized_request;\n  // Generated from validated build-time config; never merge webhook fields into it.\n  const config={\"client_id\":\"sales-demo\",\"business_name\":\"Example Sales Co\",\"email_enabled\":false,\"acknowledgement_policy\":true,\"ai_enabled\":false,\"operator_notifications_enabled\":false,\"ai_model\":\"YOUR_OPENAI_MODEL\",\"routing\":{\"sales\":\"sales_team\",\"support\":\"support_queue\",\"complaint\":\"review_queue\",\"billing\":\"review_queue\",\"general\":\"general_queue\"},\"priority\":{\"complaint\":\"high\",\"high_hint\":\"high\",\"default\":\"normal\",\"general_low_hint\":\"low\"},\"email\":{\"ack_subject\":\"We received your sales inquiry\",\"ack_body\":\"Thank you for contacting Example Sales Co. We have received your inquiry and will review it. This acknowledgement does not confirm any purchase, refund or service commitment.\",\"response_version\":\"sales-ack-v1\"}};\n  const classification=request.request_type;\n  const priority=classification==='complaint'?config.priority.complaint:request.priority_hint==='high'?config.priority.high_hint:classification==='general'&&request.priority_hint==='low'?config.priority.general_low_hint:config.priority.default;\n  const route=config.routing[classification];\n  const canonical=JSON.stringify(Object.fromEntries(Object.keys(request).filter(k=>k!=='request_id').sort().map(k=>[k,request[k]])));\n  // FNV-1a over UTF-16 code units: deterministic comparison only, NOT security.\n  let hash=0xcbf29ce484222325n;\n  for(let i=0;i<canonical.length;i++)hash=BigInt.asUintN(64,(hash^BigInt(canonical.charCodeAt(i)))*0x100000001b3n);\n  const payload_fingerprint='fnv1a64-v1:'+hash.toString(16).padStart(16,'0');\n  return [{json:{request,config,payload_fingerprint,classification,priority,route,ai_status:'unavailable',received_at:new Date().toISOString()}}];\n})();"
       },
       "name": "Apply Business Rules",
       "type": "n8n-nodes-base.code",

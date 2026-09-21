@@ -22,3 +22,9 @@ See [Build 3 live evidence](evidence/BUILD_3_LIVE_ACCEPTANCE.md). Clear failures
 failed_safe/not_sent/send_failed; ambiguity uses needs_reconciliation/unknown and
 operator review. Neither path automatically resends. The disabled error handler
 reaches Notification Outcome without sending. Build 4 is not started.
+
+Build 4 generates separate client core/handler pairs under generated/ through
+`node scripts/build_client_workflow.mjs config/client_config.support-demo.json`.
+Run `node n8n/tests/validate_clients.mjs` for the full offline suite. See
+[onboarding](../docs/CLIENT_ONBOARDING.md). These inactive artifacts still need private
+credential/Sheet binding and the planned Build 4 live acceptance before activation.

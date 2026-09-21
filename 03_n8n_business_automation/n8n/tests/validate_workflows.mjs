@@ -85,7 +85,9 @@ assert.deepEqual(children('AI Classify Request',1),['AI Fallback']);
 assert(reachable('AI Fallback','Log Business Request'));
 
 const clone=x=>JSON.parse(JSON.stringify(x));
-function run({input=fixture.input,config={},rows=[],ai='success',gmail='success',fail,empty,mutate,failurePlan={},failAfterWrite}={}) {
+export function run({workflow=wf,input=fixture.input,config={},rows=[],ai='success',gmail='success',fail,empty,mutate,failurePlan={},failAfterWrite}={}) {
+  const nodes=new Map(workflow.nodes.map(n=>[n.name,n]));
+  const children=(name,port)=>workflow.connections[name]?.main[port]?.map(e=>e.node)??[];
   const state={rows:clone(rows),writes:0,sent:0,aiCalls:0,attempts:{},visited:[],result:null,aiBody:null,code:null};
   const history={};let name='Webhook Intake',items=[{json:{body:clone(input)}}];
   for(let step=0;name&&step<100;step++) {
@@ -105,7 +107,7 @@ function run({input=fixture.input,config={},rows=[],ai='success',gmail='success'
     else if(n.type.endsWith('.code')) {
       items=vm.runInNewContext(`(function(){${n.parameters.jsCode}})()`,context,{timeout:1000});
       if(name==='Apply Business Rules') {
-        for(const key of ['email_enabled','acknowledgement_policy','ai_enabled'])assert.equal(items[0].json.config[key],false);
+        if(workflow===wf)for(const key of ['email_enabled','acknowledgement_policy','ai_enabled'])assert.equal(items[0].json.config[key],false);
         Object.assign(items[0].json.config,config);
       }
     } else if(n.type.endsWith('.if')) {
@@ -141,7 +143,7 @@ function run({input=fixture.input,config={},rows=[],ai='success',gmail='success'
     if(mutate)mutate(name,items);
     history[name]=clone(items);name=children(name,port)[0];
   }
-  assert(state.result,'workflow must return a result');validateOutput(state.result);
+  assert(state.result,'workflow must return a result');validateOutput(state.result,history['Apply Business Rules']?.[0].json.config.routing);
   assert(!JSON.stringify(state.result).includes('PRIVATE_PROVIDER_DIAGNOSTIC'));
   assert(!JSON.stringify(state.rows).includes('PRIVATE_PROVIDER_DIAGNOSTIC'));
   assert(!JSON.stringify(state.result).includes(fixture.input.email));
@@ -246,5 +248,6 @@ for(const count of [2,3]) {
 const clearNotes=run({config:enabled,gmail:'clear_failure',mutate:(name,items)=>{if(name==='Prepare Business Log')items[0].json.row.notes='Preserve operator note';}});
 assert.equal(clearNotes.rows[0].notes,'Preserve operator note');assert.equal(clearNotes.rows[0].email,fixture.input.email);cases++;
 const handlerCases=validateErrorHandler();
+export const regressionCases=contractCases+cases+handlerCases;
 console.log(`PASS: ${nodes.size} core nodes, ${cases} core scenarios, ${handlerCases} handler scenarios. No live calls.`);
 console.log(`TESTS_COLLECTED: ${contractCases+cases+handlerCases}; TESTS_PASSED: ${contractCases+cases+handlerCases}; TESTS_FAILED: 0`);

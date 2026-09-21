@@ -67,3 +67,31 @@ Existing sent/sending/unknown rows retain state and sent_at without writes. The
 shared handler false branch reaches Notification Outcome as disabled, with Always
 Output Data OFF on its IF. See the reliability document for conservative matching
 and the non-atomic Sheets/Gmail limitations.
+
+## Build 4 configuration boundary
+
+```mermaid
+flowchart TD
+  Config[Trusted client config] --> Validator[Strict format and secret validation]
+  Validator --> Core[Stable core builder]
+  Validator --> Handler[Stable error-handler builder]
+  Core --> Pair[Inactive sanitized client pair]
+  Handler --> Pair
+  Pair --> Bind[Manual credentials, Sheet and recipient binding in n8n]
+  Bind --> Acceptance[Authorized live acceptance]
+  Acceptance --> Publish[Publish only after acceptance]
+```
+
+The generator embeds validated data using JSON serialization. It never evaluates
+configuration as code or merges intake data into config. Feature flags control
+existing gates; safety nodes and connections do not vary between clients. Routes
+are labels, not external destinations. The ten-field public response is unchanged,
+except route values now follow configured labels for new rows. Valid existing rows
+retain stored routes across configuration changes without writes or sends.
+
+Canonical builders read the example config; generated client pairs use the same
+builders with a unique slug/path. Configure credentials and document selectors only
+in n8n. Metadata is onboarding-only, not copied into public responses or AI input.
+The handler keeps its fixed safe workflow label and allowlisted stage metadata;
+client-specific naming identifies its imported workflow without adding caller data.
+See [configuration](CLIENT_CONFIGURATION.md) and [onboarding](CLIENT_ONBOARDING.md).

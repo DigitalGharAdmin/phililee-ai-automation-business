@@ -29,3 +29,10 @@ Generate using node scripts/build_error_handler.mjs after generating the core so
 its node-name allowlist stays current. Validate using node n8n/tests/validate_workflows.mjs.
 See [reliability](../../docs/BUILD_3_RELIABILITY.md) and
 [manual test plan](../evidence/BUILD_3_MANUAL_TEST_PLAN.md). The operator reported live Test A PASS; this synchronization ran offline only.
+
+Build 4 consumes features.operator_notifications_enabled and
+notifications.operator_recipient from the same validated client config as the core.
+Every example.com recipient remains blocked even with the flag true. Bind a real
+recipient privately in the imported handler before separately authorized testing;
+never publish that private export. Generated client names are safe slugs, and
+notification context remains fixed/allowlisted. See the client onboarding guide.

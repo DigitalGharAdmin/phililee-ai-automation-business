@@ -1,6 +1,9 @@
 // No provider calls. Generate a disabled-by-default sanitized notification workflow.
-import {readFileSync,writeFileSync} from 'node:fs';
-const core=JSON.parse(readFileSync(new URL('../n8n/workflow_core/business_automation_core.sanitized.json',import.meta.url),'utf8'));
+import {writeFileSync} from 'node:fs';
+import {isMain,loadConfig,validateConfig} from './client_config.mjs';
+import {buildCore} from './build_core.mjs';
+export function buildErrorHandler(client=loadConfig(),clientNamed=false){
+client=validateConfig(client);const core=buildCore(client,clientNamed);
 const nodes=[],connections={};
 function add(name,type,version,parameters,extra={}){
   nodes.push({name,type:`n8n-nodes-base.${type}`,typeVersion:version,parameters,id:`error-template-${nodes.length+1}`,position:[nodes.length*260,0],onError:'stopWorkflow',...extra});
@@ -23,9 +26,9 @@ code('Normalize Error Context',function(){
 });
 nodes.at(-1).parameters.jsCode=nodes.at(-1).parameters.jsCode.replace('ALLOWED_NODE_NAMES',JSON.stringify(core.nodes.map(n=>n.name)));
 code('Prepare Privacy-Safe Error Notification',function(){
-  const config={notifications_enabled:false,operator_recipient:'operator@example.com'};
+  const config=TRUSTED_NOTIFICATION_CONFIG;
   const c=$input.first().json;
-  const send=config.notifications_enabled===true&&config.operator_recipient!=='operator@example.com'&&/^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/.test(config.operator_recipient);
+  const send=config.notifications_enabled===true&&!/@example\.com$/i.test(config.operator_recipient)&&/^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/.test(config.operator_recipient);
   const summary='Business automation workflow execution failed. Review the execution details in n8n.';
   return [{json:{send,recipient:config.operator_recipient,subject:'Business automation execution requires review',message:`${summary}\nWorkflow: ${c.workflow}\nStage: ${c.failed_node}\nMode: ${c.execution_mode}\nCategory: ${c.failure_category}`}}];
 });
@@ -40,5 +43,8 @@ edge('Error Trigger','Normalize Error Context');edge('Normalize Error Context','
 edge('Notify Operator?','Send Error Notification');edge('Notify Operator?','Notification Disabled',1);edge('Send Error Notification','Notification Outcome');edge('Send Error Notification','Notification Outcome',1);
 edge('Notification Disabled','Notification Outcome');
 const workflow={name:'MB05 Business Automation — Error Handler',active:false,nodes,connections,settings:{executionOrder:'v1',saveDataErrorExecution:'none',saveDataSuccessExecution:'none',saveManualExecutions:false,saveExecutionProgress:false},pinData:{},tags:[]};
-writeFileSync(new URL('../n8n/workflow_error_handler/business_automation_error_handler.sanitized.json',import.meta.url),JSON.stringify(workflow,null,2)+'\n');
-console.log(`Generated ${nodes.length} error-handler nodes; notifications disabled.`);
+nodes.find(n=>n.name==='Prepare Privacy-Safe Error Notification').parameters.jsCode=nodes.find(n=>n.name==='Prepare Privacy-Safe Error Notification').parameters.jsCode.replace('TRUSTED_NOTIFICATION_CONFIG',()=>JSON.stringify({notifications_enabled:client.features.operator_notifications_enabled,operator_recipient:client.notifications.operator_recipient}));
+if(clientNamed)workflow.name='MB05 Business Automation - '+client.client_id+' - Error Handler';
+return workflow;
+}
+if(isMain(import.meta.url)){writeFileSync(new URL('../n8n/workflow_error_handler/business_automation_error_handler.sanitized.json',import.meta.url),JSON.stringify(buildErrorHandler(),null,2)+'\n');console.log('Generated canonical handler.');}

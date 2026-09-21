@@ -9,3 +9,12 @@ node_modules/
 credentials/
 *.pem
 *.key
+config/*.json
+!config/client_config.example.json
+!config/client_config.support-demo.json
+!config/client_config.sales-demo.json
+n8n/generated/*
+!n8n/generated/business_automation_core.support-demo.sanitized.json
+!n8n/generated/business_automation_handler.support-demo.sanitized.json
+!n8n/generated/business_automation_core.sales-demo.sanitized.json
+!n8n/generated/business_automation_handler.sales-demo.sanitized.json

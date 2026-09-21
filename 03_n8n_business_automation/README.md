@@ -1,6 +1,6 @@
 # AI-Powered Business Automation System
 
-MASTER BUILD 05, internal Build 3: Reliability + Error Handling.
+MASTER BUILD 05, internal Build 4: Client Customization Layer.
 Build 1 defined the contracts. Build 2 provides an inactive sanitized workflow and
 offline verification. The operator has now completed the five Build 2 live acceptance
 scenarios; see [sanitized evidence](n8n/evidence/BUILD_2_MANUAL_ACCEPTANCE.md).
@@ -58,7 +58,8 @@ Pattern scanning supplements review and does not prove absence of every secret.
 
 Builds 1?3 are complete. Build 3 live acceptance A?H is operator-confirmed;
 [the acceptance record](n8n/evidence/BUILD_3_LIVE_ACCEPTANCE.md) records sanitized outcomes.
-Next: Build 4 — Client Customization Layer (not started).
+Build 4: Client Customization Layer implemented and verified offline; live acceptance planned.
+Next: Build 5 - Demo + Portfolio Packaging (not started).
 No later master build is started. Other projects are unchanged.
 
 ## Build 2 core workflow
@@ -88,3 +89,34 @@ and the [reusable live test plan](n8n/evidence/BUILD_3_MANUAL_TEST_PLAN.md).
 This repository synchronization used offline checks only; the operator performed the
 live tests separately. Clear recipient rejection now persists failed_safe/not_sent/
 send_failed before returning a safe result; uncertain outcomes require reconciliation.
+
+## Build 4 client customization
+
+Build 1: complete. Build 2: complete. Build 3: complete, including operator live
+acceptance. Build 4: implementation and offline checks complete; client live
+acceptance remains planned. No Build 5 work is included.
+
+One stable core and error-handler builder consumes validated format-1 configuration.
+Business identity, routing, default priority, acknowledgement content/version, email
+policy, AI policy and operator notification policy are build-time data. Webhook
+input cannot override configuration. Canonical exports stay separate from generated
+client pairs; every export remains inactive with no credentials or real Sheet IDs.
+
+From this project directory:
+
+```text
+node scripts/client_config.mjs config/client_config.support-demo.json
+node scripts/build_client_workflow.mjs config/client_config.support-demo.json
+node scripts/build_client_workflow.mjs config/client_config.sales-demo.json
+node n8n/tests/validate_clients.mjs
+```
+
+The full suite passes 224 scenarios: 130 Build 1?3 checks plus 94 client config,
+generation and reliability scenarios. It uses fake providers only. Both demo pairs
+are committed for review; private configs and other generated pairs are ignored.
+Normal customization requires editing config and rebuilding, not changing core code.
+Real credential/document/recipient binding remains a private n8n onboarding step.
+
+See [configuration fields](docs/CLIENT_CONFIGURATION.md),
+[onboarding checklist](docs/CLIENT_ONBOARDING.md) and
+[planned live acceptance](n8n/evidence/BUILD_4_MANUAL_TEST_PLAN.md).

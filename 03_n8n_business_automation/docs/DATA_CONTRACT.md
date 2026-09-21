@@ -61,3 +61,11 @@ Build 3 enum extension: failed_safe requires accepted=true, logged=true,
 action=acknowledge, email_status=not_sent, result_summary=send_failed and HTTP 503.
 It represents a confirmed persisted pre-send rejection, never ambiguous delivery.
 Duplicate not_sent rows remain reuse-only. The ten output keys are unchanged.
+
+## Build 4 routing extension
+
+For new accepted requests, route is the configured label for classification (safe
+lowercase slug up to 64 characters). The default mapping above remains unchanged;
+none remains reserved for invalid/conflicting input. Duplicate results preserve a
+valid stored route even after config changes. This is a queue label only, not an
+email address or integration. No client_id, metadata or new public keys are added.

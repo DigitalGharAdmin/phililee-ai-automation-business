@@ -34,9 +34,9 @@ failure 503, approval/reconciliation 202, logged/completed/duplicate 200.
 3. Select local HTTP Basic Auth on Webhook, Sheets OAuth on every Sheets node,
    and replace `YOUR_GOOGLE_SHEET_ID` locally. Use a private Requests tab with the
    headers below. Recheck mappings after schema refresh; retain RAW write format.
-4. Edit only the trusted config literal in Apply Business Rules: business_name,
-   email_enabled, acknowledgement_policy, ai_enabled, ai_model. Enable flags and
-   policy default false; use actual booleans. Input cannot override them.
+4. Edit validated client config and rebuild using the Build 4 client generator.
+   Do not manually edit core logic for normal onboarding. Enable flags and policy
+   are strict booleans; webhook input cannot override the embedded configuration.
 5. To enable AI, select a local OpenAI credential, choose a Responses structured-
    output model instead of `YOUR_OPENAI_MODEL`, and set ai_enabled=true. Disabled
    or unconfigured AI yields unavailable. Transport/credential failure yields unavailable; invalid model output yields fallback.
@@ -48,7 +48,7 @@ failure 503, approval/reconciliation 202, logged/completed/duplicate 200.
    acceptance. Never send a live demo to example.com. Use a private/HTTPS endpoint.
 
 .env.example is a configuration inventory, not an n8n loader. Map model/label/flags
-to the literal, sheet ID to native selectors, and keys to local credentials only.
+to client config, sheet ID to native selectors, and keys to local credentials only.
 
 ## Requests sheet schema
 
@@ -139,3 +139,9 @@ resend occurs for sent, sending, unknown or not_sent duplicate rows.
 All 24 initial mappings must remain present as `={{ $json.row.FIELD }}`, matching
 on request_id. Selecting/restoring a sheet can clear mappings in n8n; recheck them
 after any sheet change. The static validator verifies every mapping.
+
+Build 4 supports client-specific queue labels and fixed acknowledgement content.
+See [configuration](../../docs/CLIENT_CONFIGURATION.md). Generated pairs use unique
+client webhook paths; new rows use configured routing and response_version. Existing
+rows retain prior routes and delivery state even after config updates. The generator
+preserves every reliability node, edge, retry policy and 24-column mapping.

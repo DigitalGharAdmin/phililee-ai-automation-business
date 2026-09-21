@@ -4,6 +4,7 @@ import {readFileSync, existsSync} from 'node:fs';
 import {execFileSync, spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
+import {validateConfig} from './client_config.mjs';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 const read=p=>readFileSync(path.join(root,p),'utf8');
@@ -30,14 +31,14 @@ export function input(raw) {
   return x;
 }
 const summaries={rejected:'invalid_input',conflict:'id_conflict',logged:'recorded',awaiting_approval:'approval_required',completed:'acknowledgement_sent',duplicate:'existing_request',failed:'operation_failed',failed_safe:'send_failed',needs_reconciliation:'reconciliation_required'};
-export function output(x) {
+export function output(x,routing=routes) {
   assert(x && typeof x==='object' && !Array.isArray(x));
   assert.deepEqual(Object.keys(x).sort(),['request_id','accepted','classification','priority','route','action','status','logged','email_status','result_summary'].sort());
   assert(x.request_id===null || uuid(x.request_id));
   assert.equal(typeof x.accepted,'boolean'); assert.equal(typeof x.logged,'boolean');
   assert(x.classification===null || types.includes(x.classification));
   assert(x.priority===null || priorities.includes(x.priority));
-  assert(['none',...Object.values(routes)].includes(x.route));
+  assert(x.route==='none'||(typeof x.route==='string'&&/^[a-z][a-z0-9_-]{0,63}$/.test(x.route)));
   assert(['none','log_only','request_approval','acknowledge','reuse'].includes(x.action));
   assert(['not_requested','not_sent','disabled','pending_approval','sending','sent','failed','unknown'].includes(x.email_status));
   assert(Object.hasOwn(summaries,x.status)); assert.equal(x.result_summary,summaries[x.status]);
@@ -47,7 +48,7 @@ export function output(x) {
     assert.equal(x.action,'none'); assert.equal(x.logged,false); assert.equal(x.email_status,'not_requested');
   } else {
     assert(uuid(x.request_id)); assert(types.includes(x.classification)); assert(priorities.includes(x.priority));
-    assert.equal(x.route,routes[x.classification]);
+    if(x.status==='duplicate')assert.notEqual(x.route,'none');else assert.equal(x.route,routing[x.classification]);
   }
   if(['logged','awaiting_approval','completed','duplicate','failed_safe','needs_reconciliation'].includes(x.status)) assert(x.logged);
   if(x.status==='logged') {assert.equal(x.action,'log_only'); assert(['not_requested','disabled'].includes(x.email_status));}
@@ -71,7 +72,7 @@ for(const patch of [{accepted:false},{logged:false},{status:'completed',result_s
   assert.throws(()=>output({...fixture.output,...patch})); cases++;
 }
 for(const file of ['README.md','.env.example','.gitignore','docs/ARCHITECTURE.md','docs/BUSINESS_RULES.md','docs/DATA_CONTRACT.md','docs/BUILD_1_SCOPE.md','n8n/README.md','n8n/workflow_core/README.md','n8n/workflow_error_handler/README.md','demo/README.md']) assert(existsSync(path.join(root,file)),file);
-for(const name of ['.env','.env.local','local.db','n8n/raw_exports/private.json','credentials/local.json'])
+for(const name of ['.env','.env.local','local.db','n8n/raw_exports/private.json','credentials/local.json','config/client_config.private.json','n8n/generated/business_automation_core.private.sanitized.json'])
   assert.equal(spawnSync('git',['check-ignore','-q','--',name],{cwd:root}).status,0,`Missing ignore: ${name}`);
 assert.notEqual(spawnSync('git',['check-ignore','-q','--no-index','--','.env.example'],{cwd:root}).status,0);
 const files=execFileSync('git',['ls-files','--cached','--others','--exclude-standard','-z','--','.'],{cwd:root,encoding:'utf8'}).split('\0').filter(Boolean);
@@ -85,6 +86,11 @@ for(const file of new Set(files)) {
   for(const match of content.matchAll(/[\w.+-]+@([\w.-]+\.[A-Za-z]{2,})/g)) if(match[1].toLowerCase()!=='example.com') issues.push([file,'nonexample email']);
   if(file.endsWith('.json')) {
     const data=JSON.parse(content);
+    if(file.startsWith('config/')){
+      if(!['config/client_config.example.json','config/client_config.support-demo.json','config/client_config.sales-demo.json'].includes(file))issues.push([file,'private client configuration']);
+      validateConfig(data);
+    }
+    if(file.startsWith('n8n/generated/')&&!/^n8n\/generated\/business_automation_(core|handler)\.(support-demo|sales-demo)\.sanitized\.json$/.test(file))issues.push([file,'private generated artifact']);
     if(data.nodes && (!file.endsWith('.sanitized.json') || data.nodes.some(n=>n.credentials || n.webhookId))) issues.push([file,'unsafe workflow export']);
     if(data.nodes) {
       if(data.id||data.versionId||data.meta||data.settings?.errorWorkflow)issues.push([file,'account-specific workflow metadata']);

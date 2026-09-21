@@ -1,0 +1,38 @@
+{
+  "config_version": "1",
+  "client_id": "example-client",
+  "business_name": "Your Business",
+  "features": {
+    "email_enabled": false,
+    "acknowledgement_policy": false,
+    "ai_enabled": false,
+    "operator_notifications_enabled": false
+  },
+  "ai": {
+    "model": "YOUR_OPENAI_MODEL"
+  },
+  "routing": {
+    "sales": "sales_queue",
+    "support": "support_queue",
+    "complaint": "review_queue",
+    "billing": "review_queue",
+    "general": "general_queue"
+  },
+  "priority": {
+    "complaint": "high",
+    "high_hint": "high",
+    "default": "normal",
+    "general_low_hint": "low"
+  },
+  "email": {
+    "ack_subject": "We received your inquiry",
+    "ack_body": "Thank you for contacting {{business_name}}. We have received your inquiry and will review it. This acknowledgement does not confirm any purchase, refund or service commitment.",
+    "response_version": "ack-v1"
+  },
+  "notifications": {
+    "operator_recipient": "operator@example.com"
+  },
+  "metadata": {
+    "environment": "demo"
+  }
+}

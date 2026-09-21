@@ -2,8 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 
-export function validateErrorHandler(){
-  const wf=JSON.parse(readFileSync(new URL('../workflow_error_handler/business_automation_error_handler.sanitized.json',import.meta.url),'utf8'));
+export function validateErrorHandler(wf=JSON.parse(readFileSync(new URL('../workflow_error_handler/business_automation_error_handler.sanitized.json',import.meta.url),'utf8'))){
   const nodes=new Map(wf.nodes.map(n=>[n.name,n]));
   assert.equal(wf.active,false);assert(!wf.settings.errorWorkflow);
   assert.equal(wf.settings.saveDataErrorExecution,'none');assert.equal(wf.settings.saveManualExecutions,false);
@@ -16,11 +15,12 @@ export function validateErrorHandler(){
   for(const n of wf.nodes){assert(!n.credentials&&!n.webhookId);if(n.type.endsWith('.code'))assert(!/\brequire\s*\(|\bimport\s*\(/.test(n.parameters.jsCode));}
   assert.equal(nodes.get('Send Error Notification').parameters.message,'={{ $json.message }}');
   const prepare=nodes.get('Prepare Privacy-Safe Error Notification').parameters.jsCode;
-  assert(prepare.includes('notifications_enabled:false'));assert(prepare.includes("operator_recipient:'operator@example.com'"));
+  assert(prepare.includes('"notifications_enabled":false'));assert(prepare.includes('"operator_recipient":"operator@example.com"'));
   const coreReadme=readFileSync(new URL('../workflow_core/README.md',import.meta.url),'utf8');
   assert(coreReadme.includes('Settings > Error Workflow')&&coreReadme.includes('MB05 Business Automation'));
 
   function run(event,{enable=false,replaceRecipient=true,outcome='success'}={}){
+    const fakeRecipient='reviewer'+'@'+'example.invalid'; // Reserved synthetic domain; no actual delivery.
     let name='Error Trigger',items=[{json:event}],sends=0,prepared,normalized;const visited=[];
     for(let i=0;name&&i<12;i++){
       const n=nodes.get(name);visited.push(name);let port=0;
@@ -29,15 +29,15 @@ export function validateErrorHandler(){
       if(n.type.endsWith('.code')){
         let code=n.parameters.jsCode;
         if(enable&&name==='Prepare Privacy-Safe Error Notification'){
-          code=code.replace('notifications_enabled:false','notifications_enabled:true');
-          if(replaceRecipient)code=code.replaceAll('operator@example.com','reviewer@example.com').replace("config.operator_recipient!=='reviewer@example.com'","config.operator_recipient!=='operator@example.com'");
+          code=code.replace('"notifications_enabled":false','"notifications_enabled":true');
+          if(replaceRecipient)code=code.replaceAll('operator@example.com',fakeRecipient);
         }
         items=vm.runInNewContext(`(function(){${code}})()`,context,{timeout:1000});
         if(name==='Normalize Error Context')normalized=JSON.parse(JSON.stringify(items[0].json));
         if(name==='Prepare Privacy-Safe Error Notification')prepared=JSON.parse(JSON.stringify(items[0].json));
       }else if(n.type.endsWith('.if'))port=expr(n.parameters.conditions.conditions[0].leftValue)?0:1;
       else if(n.type.endsWith('.gmail')){
-        assert.equal(expr(n.parameters.sendTo),'reviewer@example.com');
+        assert.equal(expr(n.parameters.sendTo),fakeRecipient);
         assert(!expr(n.parameters.message).includes('PRIVATE_MARKER'));
         sends++;port=outcome==='failure'?1:0;
         items=[{json:outcome==='failure'?{error:{message:'PRIVATE_MARKER'}}:outcome==='empty'?{}:{id:'synthetic-accepted'}}];
