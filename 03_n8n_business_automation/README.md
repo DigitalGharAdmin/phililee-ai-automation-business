@@ -56,8 +56,8 @@ It validates fixtures and negative cases, required documentation, secret/privacy
 patterns and Git ignore behavior. It prints only paths/categories on scan failure.
 Pattern scanning supplements review and does not prove absence of every secret.
 
-Builds 1 and 2 are complete; Build 3 adds offline-verified reliability hardening.
-Build 2 live acceptance is operator-confirmed. Build 3 live tests remain pending.
+Builds 1?3 are complete. Build 3 live acceptance A?H is operator-confirmed;
+[the acceptance record](n8n/evidence/BUILD_3_LIVE_ACCEPTANCE.md) records sanitized outcomes.
 Next: Build 4 — Client Customization Layer (not started).
 No later master build is started. Other projects are unchanged.
 
@@ -70,8 +70,8 @@ Matching duplicates return stored state without writes or resends. Invalid input
 cannot call providers. Email and AI remain disabled by default. Billing/complaint
 responses remain pending; no approval-resumption workflow is implemented.
 
-Run `node n8n/tests/validate_workflows.mjs`: 81 core scenarios, 9 handler scenarios
-and 19 Build 1 contract checks (109 total). These use actual exported Code nodes and fake providers,
+Run `node n8n/tests/validate_workflows.mjs`: 102 core scenarios, 9 handler scenarios
+and 19 Build 1 contract checks (130 total). These use actual exported Code nodes and fake providers,
 not a live n8n runtime. Run `node scripts/build_core.mjs` and `node scripts/build_error_handler.mjs` to regenerate JSON from
 its reviewable source, then rerun validation. No dependency installation is needed.
 See [setup/schema/limits](n8n/workflow_core/README.md) and
@@ -84,5 +84,7 @@ Mark Sent. Empty/error acknowledgements and final persistence failures require
 manual reconciliation. Existing records never trigger automatic resend. The shared
 error handler produces allowlisted metadata only; notifications default off.
 See [failure matrix, retry policy and reconciliation](docs/BUILD_3_RELIABILITY.md)
-and the [unexecuted live test plan](n8n/evidence/BUILD_3_MANUAL_TEST_PLAN.md).
-No live n8n, OpenAI, Gmail or Sheets calls were made in this build.
+and the [reusable live test plan](n8n/evidence/BUILD_3_MANUAL_TEST_PLAN.md).
+This repository synchronization used offline checks only; the operator performed the
+live tests separately. Clear recipient rejection now persists failed_safe/not_sent/
+send_failed before returning a safe result; uncertain outcomes require reconciliation.

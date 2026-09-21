@@ -29,7 +29,7 @@ export function input(raw) {
   assert.equal(typeof x.requires_response,'boolean');
   return x;
 }
-const summaries={rejected:'invalid_input',conflict:'id_conflict',logged:'recorded',awaiting_approval:'approval_required',completed:'acknowledgement_sent',duplicate:'existing_request',failed:'operation_failed',needs_reconciliation:'reconciliation_required'};
+const summaries={rejected:'invalid_input',conflict:'id_conflict',logged:'recorded',awaiting_approval:'approval_required',completed:'acknowledgement_sent',duplicate:'existing_request',failed:'operation_failed',failed_safe:'send_failed',needs_reconciliation:'reconciliation_required'};
 export function output(x) {
   assert(x && typeof x==='object' && !Array.isArray(x));
   assert.deepEqual(Object.keys(x).sort(),['request_id','accepted','classification','priority','route','action','status','logged','email_status','result_summary'].sort());
@@ -39,7 +39,7 @@ export function output(x) {
   assert(x.priority===null || priorities.includes(x.priority));
   assert(['none',...Object.values(routes)].includes(x.route));
   assert(['none','log_only','request_approval','acknowledge','reuse'].includes(x.action));
-  assert(['not_requested','disabled','pending_approval','sending','sent','failed','unknown'].includes(x.email_status));
+  assert(['not_requested','not_sent','disabled','pending_approval','sending','sent','failed','unknown'].includes(x.email_status));
   assert(Object.hasOwn(summaries,x.status)); assert.equal(x.result_summary,summaries[x.status]);
   assert.equal(x.accepted,!['rejected','conflict'].includes(x.status));
   if(!x.accepted) {
@@ -49,10 +49,11 @@ export function output(x) {
     assert(uuid(x.request_id)); assert(types.includes(x.classification)); assert(priorities.includes(x.priority));
     assert.equal(x.route,routes[x.classification]);
   }
-  if(['logged','awaiting_approval','completed','duplicate','needs_reconciliation'].includes(x.status)) assert(x.logged);
+  if(['logged','awaiting_approval','completed','duplicate','failed_safe','needs_reconciliation'].includes(x.status)) assert(x.logged);
   if(x.status==='logged') {assert.equal(x.action,'log_only'); assert(['not_requested','disabled'].includes(x.email_status));}
   if(x.status==='awaiting_approval') {assert.equal(x.action,'request_approval');assert.equal(x.email_status,'pending_approval');}
   if(x.status==='completed') {assert.equal(x.action,'acknowledge');assert.equal(x.email_status,'sent');}
+  if(x.status==='failed_safe') {assert.equal(x.action,'acknowledge');assert.equal(x.email_status,'not_sent');}
   if(x.status==='duplicate') assert.equal(x.action,'reuse');
   if(x.status==='needs_reconciliation') assert.equal(x.email_status,'unknown');
 }

@@ -17,6 +17,18 @@ const expectedEdges=[["Webhook Intake",0,"Normalize Input"],["Normalize Input",0
 const gmailEdge=expectedEdges.find(e=>e[0]==='Send Business Email'&&e[1]===0);
 gmailEdge[2]='Confirm Gmail Acceptance';
 expectedEdges.push(['Confirm Gmail Acceptance',0,'Gmail Accepted?'],['Gmail Accepted?',0,'Mark Sent'],['Gmail Accepted?',1,'Prepare Unknown Outcome']);
+expectedEdges.find(e=>e[0]==='Send Business Email'&&e[1]===1)[2]='Classify Send Failure';
+expectedEdges.push(['Classify Send Failure',0,'Clear Send Failure?'],['Clear Send Failure?',0,'Prepare Send Failed'],['Clear Send Failure?',1,'Prepare Unknown Outcome'],['Prepare Send Failed',0,'Mark Send Failed'],['Mark Send Failed',0,'Confirm Send Failed'],['Mark Send Failed',1,'Prepare Unknown Outcome'],['Confirm Send Failed',0,'Send Failed Confirmed?'],['Send Failed Confirmed?',0,'Restore Send Failed Result'],['Send Failed Confirmed?',1,'Prepare Unknown Outcome'],['Restore Send Failed Result',0,'Prepare Final Status']);
+const expectedColumns='request_id payload_fingerprint received_at created_at updated_at customer_name email company request_type source classification priority route action status ai_status result_summary requires_response email_status last_action_at notes approval_status response_version sent_at'.split(' ');
+const mappings=nodes.get('Log Business Request').parameters.columns;
+assert.deepEqual(Object.keys(mappings.value),expectedColumns);
+assert.deepEqual(mappings.schema.map(s=>s.id),expectedColumns);
+for(const key of expectedColumns)assert.equal(mappings.value[key],'={{ $json.row.'+key+' }}');
+assert.deepEqual(mappings.matchingColumns,['request_id']);
+assert.equal(nodes.get('Mark Sent').parameters.columns.value.request_id,"={{ $('Prepare Business Response').first().json.request.request_id }}");
+assert.deepEqual(Object.keys(nodes.get('Mark Send Failed').parameters.columns.value).sort(),['request_id','status','email_status','result_summary','last_action_at','updated_at'].sort());
+assert.deepEqual(nodes.get('Send Failed Confirmed?').parameters.conditions.conditions[0].operator,{type:'boolean',operation:'true',singleValue:true});
+assert.equal(nodes.get('AI Classify Request').parameters.url,'https://api.openai.com/v1/responses');
 const actualEdges=Object.entries(wf.connections).flatMap(([name,p])=>p.main.flatMap((lane,i)=>lane.map(e=>[name,i,e.node])));
 assert.deepEqual(actualEdges.sort(),expectedEdges.sort());
 assert(!reachable('Webhook Intake','Mark Sent',new Set(['Gmail Accepted?'])));
@@ -97,7 +109,9 @@ function run({input=fixture.input,config={},rows=[],ai='success',gmail='success'
         Object.assign(items[0].json.config,config);
       }
     } else if(n.type.endsWith('.if')) {
-      const c=n.parameters.conditions.conditions[0];assert.equal(c.operator.type,'boolean');const v=evaluate(c.leftValue);assert.equal(typeof v,'boolean');port=v?0:1;
+      const c=n.parameters.conditions.conditions[0],v=evaluate(c.leftValue);
+      if(name==='Clear Send Failure?'){assert.equal(c.operator.type,'string');assert.equal(c.operator.operation,'equals');port=v===c.rightValue?0:1;}
+      else {assert.equal(c.operator.type,'boolean');assert.equal(c.operator.operation,'true');assert.equal(typeof v,'boolean');port=v?0:1;}
     } else if(n.type.endsWith('.googleSheets')) {
       const p=n.parameters;
       if(p.operation==='read'){
@@ -119,7 +133,7 @@ function run({input=fixture.input,config={},rows=[],ai='success',gmail='success'
       else items=[{json:{status:ai==='incomplete'?'incomplete':'completed',output:[{content:ai==='refusal'?[{type:'refusal'}]:[{type:'output_text',text:ai==='malformed'?'bad':JSON.stringify(ai==='extra'?{classification:'sales',priority:'high',summary:'safe',send:true}:{classification:ai==='invalid_enum'?'untrusted':'billing',priority:'high',summary:ai==='empty_summary'?'':ai==='long_summary'?'x'.repeat(301):'Synthetic summary'})}]}]}}];
     } else if(n.type.endsWith('.gmail')) {
       assert.equal(evaluate(n.parameters.sendTo),fixture.input.email);assert(!evaluate(n.parameters.message).includes('Synthetic summary'));
-      if(gmail==='clear_failure'){port=1;items=[{json:{error:{message:'PRIVATE_PROVIDER_DIAGNOSTIC'}}}];}
+      if(gmail==='clear_failure'){port=1;items=[{json:{error:'Invalid email address (item 0)'}}];}
       else {state.sent++;items=[{json:gmail==='missing'?{}:gmail==='bad_id'?{id:42}:gmail==='error_success'?{id:'synthetic-message',error:'PRIVATE_PROVIDER_DIAGNOSTIC'}:{id:'synthetic-message'}}];
         if(gmail==='timeout_after_accept'){port=1;items=[{json:{error:{message:'PRIVATE_PROVIDER_DIAGNOSTIC'}}}];}
       }
@@ -146,7 +160,7 @@ const noResponse=run({input:{...fixture.input,requires_response:false},config:en
 for(const type of ['billing','complaint']){const r=run({input:{...fixture.input,request_type:type,priority_hint:'low'},config:enabled});assert.equal(r.sent,0);assert.equal(r.code,202);assert.equal(r.result.email_status,'pending_approval');if(type==='complaint')assert.equal(r.result.priority,'high');cases++;}
 const pending=run({config:{email_enabled:true}});assert.equal(pending.result.status,'awaiting_approval');assert.equal(pending.sent,0);cases++;
 for(const ai of ['success','error','malformed','extra','refusal','incomplete']){
-  const r=run({config:aiEnabled,ai});assert.equal(r.aiCalls,1);assert.equal(r.result.classification,'sales');assert.equal(r.sent,0);assert.equal(r.rows[0].ai_status,ai==='success'?'success':'fallback');cases++;
+  const r=run({config:aiEnabled,ai});assert.equal(r.aiCalls,1);assert.equal(r.result.classification,'sales');assert.equal(r.sent,0);assert.equal(r.rows[0].ai_status,ai==='success'?'success':ai==='error'?'unavailable':'fallback');cases++;
 }
 assert.equal(first.rows[0].ai_status,'unavailable');
 assert.match(first.rows[0].payload_fingerprint,/^fnv1a64-v1:[0-9a-f]{16}$/);
@@ -154,8 +168,8 @@ const reordered=run({input:Object.fromEntries(Object.entries(fixture.input).reve
 assert.equal(reordered.rows[0].payload_fingerprint,first.rows[0].payload_fingerprint);
 const changed=run({input:{...fixture.input,message:'A different valid message.'}});
 assert.notEqual(changed.rows[0].payload_fingerprint,first.rows[0].payload_fingerprint);
-for(const email_status of ['sent','sending','unknown','pending_approval','disabled']){
-  const rows=[{...first.rows[0],email_status,notes:'Keep review state'}];
+for(const email_status of ['sent','sending','unknown','not_sent','pending_approval','disabled']){
+  const rows=[{...first.rows[0],email_status,sent_at:email_status==='sent'?'2026-01-01T00:00:00.000Z':'',notes:'Keep review state'}];
   const r=run({config:{...enabled,...aiEnabled},rows});assert.equal(r.result.status,'duplicate');assert.equal(r.aiCalls,0);assert.equal(r.writes,0);assert.equal(r.sent,0);assert.deepEqual(r.rows,rows);cases++;
 }
 const conflict=run({rows:first.rows,input:{...fixture.input,message:'A different valid request.'}});assert.equal(conflict.code,409);assert.equal(conflict.writes,0);cases++;
@@ -167,12 +181,12 @@ const unknownWriteFailure=run({config:enabled,fail:'Mark Unknown',mutate:(name,i
 const privacy=run({config:aiEnabled,input:{...fixture.input,message:'Demo Customer customer@example.com 00000000-0000-4000-8000-000000000001 please help.'}});
 for(const value of [fixture.input.email,fixture.input.customer_name,fixture.input.request_id])assert(!privacy.aiBody.input.includes(value));cases++;
 for(const ai of ['timeout','missing_credential','network','invalid_enum','empty_summary','long_summary']) {
-  const r=run({config:aiEnabled,ai});assert.equal(r.rows[0].ai_status,'fallback');assert.equal(r.result.classification,'sales');assert.equal(r.sent,0);cases++;
+  const r=run({config:aiEnabled,ai});assert.equal(r.rows[0].ai_status,['timeout','missing_credential','network'].includes(ai)?'unavailable':'fallback');assert.equal(r.result.classification,'sales');assert.equal(r.sent,0);cases++;
 }
 for(const ai_model of [null,'','  ','YOUR_OPENAI_MODEL']) {
   const r=run({config:{ai_enabled:true,ai_model}});assert.equal(r.aiCalls,0);assert.equal(r.rows[0].ai_status,'unavailable');cases++;
 }
-for(const gmail of ['clear_failure','timeout_after_accept','missing','bad_id','error_success']) {
+for(const gmail of ['timeout_after_accept','missing','bad_id','error_success']) {
   const r=run({config:enabled,gmail});assert.equal(r.result.status,'needs_reconciliation');assert.equal(r.result.email_status,'unknown');
   assert(!r.visited.includes('Mark Sent'));assert.equal(r.attempts['Send Business Email'],1);
   const replay=run({config:enabled,rows:r.rows});assert.equal(replay.sent,0);assert.equal(replay.writes,0);cases++;
@@ -183,7 +197,7 @@ for(const name of ['Find Existing Request','Log Business Request','AI Classify R
     assert.equal(r.attempts[name],3);
     if(count===3 && ['Find Existing Request','Log Business Request'].includes(name)){assert.equal(r.result.logged,false);assert.equal(r.sent,0);}
     if(count===3 && ['Mark Sending','Mark Sent','Mark Unknown'].includes(name))assert.equal(r.result.status,'needs_reconciliation');
-    if(count===3 && name==='AI Classify Request')assert.equal(r.rows[0].ai_status,'fallback');
+    if(count===3 && name==='AI Classify Request')assert.equal(r.rows[0].ai_status,'unavailable');
     cases++;
   }
 }
@@ -207,6 +221,30 @@ const missingTimestamp=run({config:enabled,mutate:(name,items)=>{if(name==='Mark
 assert.equal(missingTimestamp.result.status,'needs_reconciliation');cases++;
 const profilePreserved=run({config:enabled,mutate:(name,items)=>{if(name==='Prepare Business Log')items[0].json.row.notes='Keep this operator note';}});
 assert.equal(profilePreserved.rows[0].notes,'Keep this operator note');cases++;
+// Execute each conservative rejection pattern through persistence and replay.
+for(const error of ['Invalid email address (item 0)','invalid recipient','recipient address rejected','address not found','malformed email','missing recipient']) {
+  const r=run({config:enabled,gmail:'clear_failure',mutate:(name,items)=>{if(name==='Send Business Email')items[0].json={error};}});
+  assert.equal(r.result.status,'failed_safe');assert.equal(r.result.email_status,'not_sent');assert.equal(r.result.result_summary,'send_failed');assert.equal(r.result.logged,true);assert.equal(r.code,503);
+  assert.equal(r.sent,0);assert.equal(r.rows[0].sent_at,'');assert.equal(r.rows[0].status,'failed_safe');assert.equal(r.rows[0].email_status,'not_sent');assert.equal(r.rows[0].result_summary,'send_failed');
+  assert.equal(r.history['Confirm Send Failed'][0].json.send_failed,true);
+  assert.deepEqual(r.history['Classify Send Failure'][0].json,{send_failure_type:'clear'});
+  assert(r.visited.includes('Restore Send Failed Result'));assert(!r.visited.includes('Mark Sent'));
+  const replay=run({config:enabled,rows:r.rows});assert.equal(replay.sent,0);assert.equal(replay.writes,0);assert.deepEqual(replay.rows,r.rows);cases++;
+}
+for(const error of ['network timeout',null,{message:'invalid recipient'},'send accepted; invalid recipient reported afterward']) {
+  const r=run({config:enabled,gmail:'clear_failure',mutate:(name,items)=>{if(name==='Send Business Email')items[0].json={error};}});
+  assert.equal(r.result.status,'needs_reconciliation');assert.deepEqual(r.history['Classify Send Failure'][0].json,{send_failure_type:'ambiguous'});assert(!r.visited.includes('Mark Send Failed'));cases++;
+}
+const contradictory=run({config:enabled,gmail:'clear_failure',mutate:(name,items)=>{if(name==='Send Business Email')items[0].json={error:'invalid recipient',id:'synthetic-accepted'};}});
+assert.equal(contradictory.result.status,'needs_reconciliation');cases++;
+for(const patch of [{fail:'Mark Send Failed'},{empty:'Mark Send Failed'},{failAfterWrite:'Mark Send Failed'},...['request_id','status','email_status','result_summary'].map(key=>({mutate:(name,items)=>{if(name==='Mark Send Failed')items[0].json[key]='mismatch';}}))]) {
+  const r=run({config:enabled,gmail:'clear_failure',...patch});assert.equal(r.result.status,'needs_reconciliation');assert.equal(r.result.email_status,'unknown');assert.equal(r.sent,0);assert.equal(r.rows[0].sent_at,'');assert(!r.visited.includes('Restore Send Failed Result'));cases++;
+}
+for(const count of [2,3]) {
+  const r=run({config:enabled,gmail:'clear_failure',failurePlan:{'Mark Send Failed':count}});assert.equal(r.attempts['Mark Send Failed'],3);assert.equal(r.result.status,count===2?'failed_safe':'needs_reconciliation');assert.equal(r.attempts['Send Business Email'],1);cases++;
+}
+const clearNotes=run({config:enabled,gmail:'clear_failure',mutate:(name,items)=>{if(name==='Prepare Business Log')items[0].json.row.notes='Preserve operator note';}});
+assert.equal(clearNotes.rows[0].notes,'Preserve operator note');assert.equal(clearNotes.rows[0].email,fixture.input.email);cases++;
 const handlerCases=validateErrorHandler();
 console.log(`PASS: ${nodes.size} core nodes, ${cases} core scenarios, ${handlerCases} handler scenarios. No live calls.`);
 console.log(`TESTS_COLLECTED: ${contractCases+cases+handlerCases}; TESTS_PASSED: ${contractCases+cases+handlerCases}; TESTS_FAILED: 0`);

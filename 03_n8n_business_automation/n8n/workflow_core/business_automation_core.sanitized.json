@@ -159,7 +159,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "return (function(){\n  const ctx=$('Apply Business Rules').first().json;\n  const rows=$input.all().map(i=>i.json).filter(r=>Object.keys(r).length);\n  const conflict=()=>({request_id:ctx.request.request_id,accepted:false,classification:null,priority:null,route:'none',action:'none',status:'conflict',logged:false,email_status:'not_requested',result_summary:'id_conflict'});\n  let result=null;\n  if(rows.length) {\n    const r=rows[0];\n    const valid=rows.length===1&&r.request_id===ctx.request.request_id&&r.payload_fingerprint===ctx.payload_fingerprint&&\n      ['sales','support','complaint','billing','general'].includes(r.classification)&&['low','normal','high'].includes(r.priority)&&\n      r.route==={sales:'sales_queue',support:'support_queue',complaint:'review_queue',billing:'review_queue',general:'general_queue'}[r.classification]&&\n      ['not_requested','disabled','pending_approval','sending','sent','failed','unknown'].includes(r.email_status);\n    // Uncertain workflow state takes precedence over a stale no-send email marker.\n    const email_status=r.status==='needs_reconciliation'?'unknown':r.email_status;\n    result=valid?{request_id:r.request_id,accepted:true,classification:r.classification,priority:r.priority,route:r.route,action:'reuse',status:'duplicate',logged:true,email_status,result_summary:'existing_request'}:conflict();\n  }\n  return [{json:{...ctx,exists:rows.length>0,result}}];\n})();"
+        "jsCode": "return (function(){\n  const ctx=$('Apply Business Rules').first().json;\n  const rows=$input.all().map(i=>i.json).filter(r=>Object.keys(r).length);\n  const conflict=()=>({request_id:ctx.request.request_id,accepted:false,classification:null,priority:null,route:'none',action:'none',status:'conflict',logged:false,email_status:'not_requested',result_summary:'id_conflict'});\n  let result=null;\n  if(rows.length) {\n    const r=rows[0];\n    const valid=rows.length===1&&r.request_id===ctx.request.request_id&&r.payload_fingerprint===ctx.payload_fingerprint&&\n      ['sales','support','complaint','billing','general'].includes(r.classification)&&['low','normal','high'].includes(r.priority)&&\n      r.route==={sales:'sales_queue',support:'support_queue',complaint:'review_queue',billing:'review_queue',general:'general_queue'}[r.classification]&&\n      ['not_requested','not_sent','disabled','pending_approval','sending','sent','failed','unknown'].includes(r.email_status);\n    // Uncertain workflow state takes precedence over a stale no-send email marker.\n    const email_status=r.status==='needs_reconciliation'?'unknown':r.email_status;\n    result=valid?{request_id:r.request_id,accepted:true,classification:r.classification,priority:r.priority,route:r.route,action:'reuse',status:'duplicate',logged:true,email_status,result_summary:'existing_request'}:conflict();\n  }\n  return [{json:{...ctx,exists:rows.length>0,result}}];\n})();"
       },
       "name": "Inspect Existing Request",
       "type": "n8n-nodes-base.code",
@@ -291,7 +291,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "return (function(){return [{json:{ai_status:'fallback'}}];})();"
+        "jsCode": "return (function(){return [{json:{ai_status:'unavailable'}}];})();"
       },
       "name": "AI Fallback",
       "type": "n8n-nodes-base.code",
@@ -942,6 +942,239 @@
     },
     {
       "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return (function(){\n  const x=$input.first().json;\n  const error=typeof x.error==='string'?x.error.trim().toLowerCase():'';\n  // Only an unambiguous recipient rejection proves that no send was accepted.\n  const clear=!x.id&&/^(invalid email address|invalid recipient|recipient address rejected|address not found|malformed email|missing recipient)(?: \\(item \\d+\\))?[.!]?$/.test(error);\n  return [{json:{send_failure_type:clear?'clear':'ambiguous'}}];\n})();"
+      },
+      "name": "Classify Send Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        840,
+        960
+      ],
+      "id": "template-28",
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "clear",
+              "leftValue": "={{ $json.send_failure_type }}",
+              "rightValue": "clear",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Clear Send Failure?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        960
+      ],
+      "id": "template-29",
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return (function(){\n  const c=$('Prepare Business Response').first().json;\n  return [{json:{...c,result:{request_id:c.request.request_id,accepted:true,classification:c.classification,priority:c.priority,route:c.route,action:'acknowledge',status:'failed_safe',logged:true,email_status:'not_sent',result_summary:'send_failed'}}}];\n})();"
+      },
+      "name": "Prepare Send Failed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1400,
+        960
+      ],
+      "id": "template-30",
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "resource": "sheet",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Requests",
+          "mode": "name"
+        },
+        "options": {
+          "cellFormat": "RAW"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "request_id": "={{ $json.request.request_id }}",
+            "status": "failed_safe",
+            "email_status": "not_sent",
+            "result_summary": "send_failed",
+            "last_action_at": "={{ new Date().toISOString() }}",
+            "updated_at": "={{ new Date().toISOString() }}"
+          },
+          "matchingColumns": [
+            "request_id"
+          ],
+          "schema": [
+            {
+              "id": "request_id",
+              "displayName": "request_id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email_status",
+              "displayName": "email_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "result_summary",
+              "displayName": "result_summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "last_action_at",
+              "displayName": "last_action_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "name": "Mark Send Failed",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        0,
+        1200
+      ],
+      "id": "template-31",
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return (function(){\n  const c=$('Prepare Send Failed').first().json;\n  return [{json:{send_failed:$input.first().json.request_id===c.request.request_id&&$input.first().json.status==='failed_safe'&&$input.first().json.email_status==='not_sent'&&$input.first().json.result_summary==='send_failed'}}];\n})();"
+      },
+      "name": "Confirm Send Failed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        280,
+        1200
+      ],
+      "id": "template-32",
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "condition",
+              "leftValue": "={{ $json.send_failed }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Send Failed Confirmed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        560,
+        1200
+      ],
+      "id": "template-33",
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return (function(){return [{json:$('Prepare Send Failed').first().json}];})();"
+      },
+      "name": "Restore Send Failed Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        840,
+        1200
+      ],
+      "id": "template-34",
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
         "resource": "sheet",
         "operation": "update",
         "documentId": {
@@ -1054,10 +1287,10 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.6,
       "position": [
-        840,
-        960
+        1120,
+        1200
       ],
-      "id": "template-28",
+      "id": "template-35",
       "onError": "continueErrorOutput",
       "retryOnFail": true,
       "maxTries": 3,
@@ -1073,10 +1306,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1120,
-        960
+        1400,
+        1200
       ],
-      "id": "template-29",
+      "id": "template-36",
       "onError": "stopWorkflow"
     },
     {
@@ -1108,10 +1341,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        1400,
-        960
+        0,
+        1440
       ],
-      "id": "template-30",
+      "id": "template-37",
       "onError": "stopWorkflow"
     },
     {
@@ -1123,10 +1356,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        0,
-        1200
+        280,
+        1440
       ],
-      "id": "template-31",
+      "id": "template-38",
       "onError": "stopWorkflow"
     },
     {
@@ -1138,10 +1371,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        280,
-        1200
+        560,
+        1440
       ],
-      "id": "template-32",
+      "id": "template-39",
       "onError": "stopWorkflow"
     },
     {
@@ -1153,10 +1386,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        560,
-        1200
+        840,
+        1440
       ],
-      "id": "template-33",
+      "id": "template-40",
       "onError": "stopWorkflow"
     },
     {
@@ -1168,10 +1401,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        840,
-        1200
+        1120,
+        1440
       ],
-      "id": "template-34",
+      "id": "template-41",
       "onError": "stopWorkflow"
     },
     {
@@ -1268,10 +1501,10 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.6,
       "position": [
-        1120,
-        1200
+        1400,
+        1440
       ],
-      "id": "template-35",
+      "id": "template-42",
       "onError": "continueErrorOutput",
       "retryOnFail": true,
       "maxTries": 3,
@@ -1287,10 +1520,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1400,
-        1200
+        0,
+        1680
       ],
-      "id": "template-36",
+      "id": "template-43",
       "onError": "stopWorkflow"
     },
     {
@@ -1302,10 +1535,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        0,
-        1440
+        280,
+        1680
       ],
-      "id": "template-37",
+      "id": "template-44",
       "onError": "stopWorkflow"
     },
     {
@@ -1313,17 +1546,17 @@
         "respondWith": "json",
         "responseBody": "={{ $json }}",
         "options": {
-          "responseCode": "={{ ({rejected:400,conflict:409,failed:503,awaiting_approval:202,needs_reconciliation:202})[$json.status] || 200 }}"
+          "responseCode": "={{ ({rejected:400,conflict:409,failed:503,failed_safe:503,awaiting_approval:202,needs_reconciliation:202})[$json.status] || 200 }}"
         }
       },
       "name": "Respond to Webhook",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.4,
       "position": [
-        280,
-        1440
+        560,
+        1680
       ],
-      "id": "template-38",
+      "id": "template-45",
       "onError": "stopWorkflow"
     }
   ],
@@ -1554,7 +1787,7 @@
         ],
         [
           {
-            "node": "Prepare Unknown Outcome",
+            "node": "Classify Send Failure",
             "type": "main",
             "index": 0
           }
@@ -1830,6 +2063,104 @@
       ]
     },
     "Restore Unknown Result": {
+      "main": [
+        [
+          {
+            "node": "Prepare Final Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Send Failure": {
+      "main": [
+        [
+          {
+            "node": "Clear Send Failure?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear Send Failure?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Send Failed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Unknown Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Send Failed": {
+      "main": [
+        [
+          {
+            "node": "Mark Send Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Send Failed": {
+      "main": [
+        [
+          {
+            "node": "Confirm Send Failed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Unknown Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirm Send Failed": {
+      "main": [
+        [
+          {
+            "node": "Send Failed Confirmed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Failed Confirmed?": {
+      "main": [
+        [
+          {
+            "node": "Restore Send Failed Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Unknown Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Send Failed Result": {
       "main": [
         [
           {

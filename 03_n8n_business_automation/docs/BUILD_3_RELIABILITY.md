@@ -1,8 +1,9 @@
 # Build 3 — Reliability + Error Handling
 
 Scope: MASTER BUILD 05 internal Build 3 only. Build 2 operator-reported acceptance
-remains historical evidence. Build 3 is verified offline; its live test plan is
-pending. No external service was invoked and no client customization layer is added.
+remains historical evidence. Build 3 offline validation and operator-reported live
+acceptance A?H are complete. See [live evidence](../n8n/evidence/BUILD_3_LIVE_ACCEPTANCE.md).
+This synchronization made no external calls. Build 4 has not started.
 
 ## Retry policy
 
@@ -26,17 +27,21 @@ Never Error or indiscriminate continue-on-fail setting is enabled.
 | --- | --- | --- |
 | Find Existing Request exhausted | failed, logged=false, operation_failed | No write/send; caller cannot assume lookup succeeded |
 | Log Business Request exhausted or unconfirmed | failed, logged=false, operation_failed | No send; a remote write might have committed despite failed acknowledgement |
-| AI unavailable/disabled | Normal deterministic processing; ai_status=unavailable internally | Logging still possible; no AI authorization |
-| AI timeout/auth/network/schema/JSON failure | Normal deterministic processing; ai_status=fallback internally | No raw errors or AI prose returned/stored; existing local policy alone controls send |
+| AI disabled or transport/auth/network failure | Normal deterministic processing; ai_status=unavailable internally | Logging still possible; no AI authorization |
+| AI schema/JSON/refusal failure | Normal deterministic processing; ai_status=fallback internally | No raw errors or AI prose returned/stored; existing local policy alone controls send |
 | Mark Sending exhausted or unconfirmed | needs_reconciliation, unknown | No Gmail call; attempts to mark unknown conservatively |
-| Gmail rejection, timeout, malformed/empty acknowledgement | needs_reconciliation, unknown | No automatic resend; even a clear reported rejection is conservatively reconciled |
+| Clear recipient rejection with confirmed persistence | failed_safe, not_sent, send_failed | No send; sent_at remains blank; no automatic retry |
+| Other Gmail errors, timeout, malformed/empty acknowledgement | needs_reconciliation, unknown | No automatic resend; operator reconciliation required |
+| Mark Send Failed exhausted, empty or mismatched confirmation | needs_reconciliation, unknown | Cannot confirm persisted failure; no resend |
 | Mark Sent exhausted or missing final confirmation | needs_reconciliation, unknown | Mail may have been accepted; no completed result |
 | Mark Unknown exhausted/unconfirmed | needs_reconciliation, unknown | Safe result retained; row may retain sending, sent or an older state |
 
-The ten-field Build 1 result contract remains unchanged. `failed` means a validated
+The ten-field result shape remains unchanged; Build 3 extends its enums. `failed` means a validated
 request could not finish; accepted=true is validation acceptance, not completion.
 logged=false means no confirmed persistence from this operation, not proof of no
-remote side effect. No new failed_safe/not_sent vocabulary is introduced.
+remote side effect. `failed_safe / not_sent / send_failed` means a clear rejection
+was persisted and confirmed, with accepted=true, logged=true, action=acknowledge
+and HTTP 503. Replay remains reuse-only, including not_sent rows.
 
 ## Sending state and duplicate protection
 
@@ -117,11 +122,35 @@ expressions using in-memory provider substitutes and checks JSON, graph structur
 retry policies, schemas, safe defaults, module restrictions, notification privacy
 and repository publication safety. Failure plans exhaust or recover configured
 attempts without network calls or real waits. Provider behavior/native import/OAuth
-cannot be proven by this harness; follow the separate manual test plan later.
+cannot be proven by this harness; the separate operator acceptance record supplies live evidence.
 
 References: [n8n Error Trigger implementation](https://github.com/n8n-io/n8n/blob/master/packages/nodes-base/nodes/ErrorTrigger/ErrorTrigger.node.ts),
 [Gmail send response contract](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/send).
 
-Offline result: 109 checks passed, 0 failed (19 contract, 81 core, 9 handler).
+Offline result: 130 checks passed, 0 failed (19 contract, 102 core, 9 handler).
 Both workflow JSON files parse; secret/privacy/tracked-file checks pass.
-Build 3 implementation/offline scope: COMPLETE. Live acceptance: PENDING.
+Build 3 implementation/offline scope: COMPLETE. Operator live acceptance: COMPLETE.
+
+## Live acceptance synchronization
+
+Gmail error output goes through Classify Send Failure and Clear Send Failure?.
+Only a string error matching invalid email address, invalid recipient, recipient
+address rejected, address not found, malformed email or missing recipient is clear.
+Matching is case-insensitive, anchored, and allows an item-number suffix and final
+punctuation. Extra context, nested/non-string errors, unknown errors or a concurrent
+acceptance ID remain ambiguous. The list is deliberately conservative; only the
+classification leaves this node, never raw error text.
+
+Clear -> Prepare Send Failed -> Mark Send Failed -> Confirm Send Failed ->
+Send Failed Confirmed? (Boolean is true) -> Restore Send Failed Result -> final.
+The update matches request_id and changes only status, email_status, result_summary,
+last_action_at and updated_at. It preserves blank sent_at and all unrelated fields.
+Confirmation checks request_id and all three state values; error/false confirmation
+routes to reconciliation. The existing Gmail success acknowledgement gate remains
+before Mark Sent; an empty success output still cannot claim sent.
+
+Notify Operator? explicitly has Always Output Data OFF. Its false branch reaches
+Notification Disabled -> Notification Outcome, preserving disabled without Gmail.
+Accepted/unconfirmed remain the enabled-notification outcomes. All 24 initial Sheets
+mappings are validated as row-field expressions, with request_id matching. Changing
+or restoring a sheet in n8n can clear mappings: recheck every mapping after editing.

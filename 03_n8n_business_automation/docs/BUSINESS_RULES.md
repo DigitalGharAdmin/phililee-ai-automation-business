@@ -39,14 +39,19 @@
 12. Logging failure -> accepted=true, status=failed, logged=false, action=none,
     email_status=not_requested. No send. accepted means validated, not completed.
 13. Email send transitions: sending marker -> sent confirmation. Known pre-send
-    failure -> failed; timeout/ambiguous send or failed post-send persistence ->
+    failure with confirmed persistence -> failed_safe/not_sent/send_failed; timeout/ambiguous send or failed post-send persistence ->
     unknown, status=needs_reconciliation. Never blindly retry unknown/sending/sent.
 14. Error workflow may notify operators using only fixed error category, stage and
-    time. No raw message, payload, email address, headers or provider error text.
+    execution mode. No raw message, payload, email address, headers or provider error text.
 
-Build 3 preserves these result terms and adds a safe shared notification workflow.
+Build 3 extends the result enums with failed_safe/not_sent/send_failed and adds a
+safe shared notification workflow. Clear failures do not reset sent_at or retry mail.
 Approval resumption remains deferred. Gmail automatic retries are disabled; only
 a confirmed Gmail success and confirmed final persistence can return completed.
 All existing matching rows are reuse-only. A stored needs_reconciliation status
 overrides a stale no-send marker to unknown in the returned duplicate result.
 See [Build 3 reliability](BUILD_3_RELIABILITY.md) for current policy and limits.
+
+Transport/auth/network AI errors use ai_status=unavailable; malformed model output
+uses fallback. Notification-disabled runs reach Notification Outcome as disabled.
+Operator live acceptance A?H is complete; see the Build 3 reliability record.

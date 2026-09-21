@@ -20,7 +20,7 @@
       "typeVersion": 2,
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "return (function(){\n  const event=$input.first().json||{};\n  const allowedNodes=[\"Webhook Intake\",\"Normalize Input\",\"Validate Input\",\"Valid Request?\",\"Prepare Invalid Result\",\"Apply Business Rules\",\"Find Existing Request\",\"Inspect Existing Request\",\"Request Exists?\",\"AI Enabled?\",\"Prepare AI Input\",\"AI Classify Request\",\"AI Fallback\",\"AI Unavailable\",\"Reconcile Classification\",\"Prepare Business Log\",\"Log Business Request\",\"Confirm Business Log\",\"Log Confirmed?\",\"Prepare Business Response\",\"Should Send Email?\",\"Mark Sending\",\"Confirm Sending\",\"Sending Confirmed?\",\"Send Business Email\",\"Confirm Gmail Acceptance\",\"Gmail Accepted?\",\"Mark Sent\",\"Confirm Sent\",\"Sent Confirmed?\",\"Prepare Sent Result\",\"Prepare No Send Result\",\"Prepare Failed Result\",\"Prepare Unknown Outcome\",\"Mark Unknown\",\"Restore Unknown Result\",\"Prepare Final Status\",\"Respond to Webhook\"];\n  const node=event.execution?.lastNodeExecuted;\n  const failed_node=allowedNodes.includes(node)?node:'Unknown stage';\n  const mode=event.execution?.mode;\n  const execution_mode=['manual','webhook','trigger','retry','error','integrated'].includes(mode)?mode:'unknown';\n  // Deliberately omit raw error objects, names, IDs and URLs from the notification.\n  const failure_category=failed_node==='AI Classify Request'?'ai_failure':\n    ['Find Existing Request','Log Business Request','Mark Sending','Mark Sent','Mark Unknown'].includes(failed_node)?'storage_failure':\n    failed_node==='Send Business Email'?'delivery_review_required':'workflow_failure';\n  return [{json:{workflow:'MB05 Business Automation - Core Workflow',failed_node,execution_mode,failure_category}}];\n})();"
+        "jsCode": "return (function(){\n  const event=$input.first().json||{};\n  const allowedNodes=[\"Webhook Intake\",\"Normalize Input\",\"Validate Input\",\"Valid Request?\",\"Prepare Invalid Result\",\"Apply Business Rules\",\"Find Existing Request\",\"Inspect Existing Request\",\"Request Exists?\",\"AI Enabled?\",\"Prepare AI Input\",\"AI Classify Request\",\"AI Fallback\",\"AI Unavailable\",\"Reconcile Classification\",\"Prepare Business Log\",\"Log Business Request\",\"Confirm Business Log\",\"Log Confirmed?\",\"Prepare Business Response\",\"Should Send Email?\",\"Mark Sending\",\"Confirm Sending\",\"Sending Confirmed?\",\"Send Business Email\",\"Confirm Gmail Acceptance\",\"Gmail Accepted?\",\"Classify Send Failure\",\"Clear Send Failure?\",\"Prepare Send Failed\",\"Mark Send Failed\",\"Confirm Send Failed\",\"Send Failed Confirmed?\",\"Restore Send Failed Result\",\"Mark Sent\",\"Confirm Sent\",\"Sent Confirmed?\",\"Prepare Sent Result\",\"Prepare No Send Result\",\"Prepare Failed Result\",\"Prepare Unknown Outcome\",\"Mark Unknown\",\"Restore Unknown Result\",\"Prepare Final Status\",\"Respond to Webhook\"];\n  const node=event.execution?.lastNodeExecuted;\n  const failed_node=allowedNodes.includes(node)?node:'Unknown stage';\n  const mode=event.execution?.mode;\n  const execution_mode=['manual','webhook','trigger','retry','error','integrated'].includes(mode)?mode:'unknown';\n  // Deliberately omit raw error objects, names, IDs and URLs from the notification.\n  const failure_category=failed_node==='AI Classify Request'?'ai_failure':\n    ['Find Existing Request','Log Business Request','Mark Sending','Mark Sent','Mark Send Failed','Mark Unknown'].includes(failed_node)?'storage_failure':\n    failed_node==='Send Business Email'?'delivery_review_required':'workflow_failure';\n  return [{json:{workflow:'MB05 Business Automation - Core Workflow',failed_node,execution_mode,failure_category}}];\n})();"
       },
       "id": "error-template-2",
       "position": [
@@ -77,7 +77,8 @@
         780,
         0
       ],
-      "onError": "stopWorkflow"
+      "onError": "stopWorkflow",
+      "alwaysOutputData": false
     },
     {
       "name": "Send Error Notification",
@@ -124,7 +125,7 @@
       "typeVersion": 2,
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "return (function(){\n  const r=$input.first().json;\n  return [{json:{notification_status:!r.error&&typeof r.id==='string'&&/^[A-Za-z0-9_-]{1,200}$/.test(r.id)?'accepted':'unconfirmed'}}];\n})();"
+        "jsCode": "return (function(){\n  const r=$input.first().json;\n  return [{json:{notification_status:r.notification_status==='disabled'?'disabled':!r.error&&typeof r.id==='string'&&/^[A-Za-z0-9_-]{1,200}$/.test(r.id)?'accepted':'unconfirmed'}}];\n})();"
       },
       "id": "error-template-7",
       "position": [
@@ -195,6 +196,17 @@
             "index": 0
           }
         ],
+        [
+          {
+            "node": "Notification Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notification Disabled": {
+      "main": [
         [
           {
             "node": "Notification Outcome",

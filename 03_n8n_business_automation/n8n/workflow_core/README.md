@@ -39,7 +39,7 @@ failure 503, approval/reconciliation 202, logged/completed/duplicate 200.
    policy default false; use actual booleans. Input cannot override them.
 5. To enable AI, select a local OpenAI credential, choose a Responses structured-
    output model instead of `YOUR_OPENAI_MODEL`, and set ai_enabled=true. Disabled
-   or unconfigured AI yields unavailable. Provider/credential failure yields fallback.
+   or unconfigured AI yields unavailable. Transport/credential failure yields unavailable; invalid model output yields fallback.
 6. Select Gmail OAuth only for separately authorized testing. Sender is the connected
    account. email_enabled alone still requires approval; acknowledgement_policy=true
    explicitly permits fixed sales/support/general acknowledgements. Billing and
@@ -99,7 +99,7 @@ handle expected failures; Never Error is disabled. Lookup/log failure prevents m
 Sheets Always Output Data intentionally permits absent-row handling and explicit
 checking of empty write output. Confirmation failure never opens the send gate.
 
-Sending-marker/Gmail/final-update failure returns unknown/needs_reconciliation and
+Sending-marker/ambiguous-Gmail/final-update failure returns unknown/needs_reconciliation and
 attempts to persist that state. If Mark Unknown also fails, the result remains safe,
 but the row may retain sending or its earlier state. Reconcile provider delivery
 before retrying. logged=false means persistence was not confirmed; a failed initial
@@ -113,7 +113,7 @@ export; check deployment-wide retention, and never share raw provider diagnostic
 
 Run `node n8n/tests/validate_workflows.mjs` for core and handler failure scenarios
 plus Build 1 checks. Build 3 shared safe error handling and reconciliation guidance
-are implemented offline; live acceptance is pending. See
+have passed offline checks and operator live acceptance A?H. See
 [the current reliability policy](../../docs/BUILD_3_RELIABILITY.md).
 
 Sources: [n8n Sheets mapping implementation](https://github.com/n8n-io/n8n/blob/master/packages/nodes-base/nodes/Google/Sheet/v2/actions/sheet/update.operation.ts),
@@ -127,3 +127,15 @@ then save locally. No live workflow ID is hard-coded in the sanitized JSON.
 Do not select the handler as its own error workflow. Its notification switch is
 off by default; configure any recipient and Gmail credentials privately. Handled
 AI/Sheets/Gmail recovery outputs do not necessarily trigger workflow-level errors.
+
+Clear recipient rejection takes Classify Send Failure -> Clear Send Failure? ->
+Prepare Send Failed -> Mark Send Failed -> Confirm Send Failed -> Boolean
+Send Failed Confirmed? -> Restore Send Failed Result -> final status. Confirmed
+state is failed_safe/not_sent/send_failed (HTTP 503), with sent_at blank. Failed
+persistence or confirmation requires reconciliation. The update changes only the
+three state fields and timestamps, matched by request_id. No automatic retry or
+resend occurs for sent, sending, unknown or not_sent duplicate rows.
+
+All 24 initial mappings must remain present as `={{ $json.row.FIELD }}`, matching
+on request_id. Selecting/restoring a sheet can clear mappings in n8n; recheck them
+after any sheet change. The static validator verifies every mapping.

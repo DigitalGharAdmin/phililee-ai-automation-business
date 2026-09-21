@@ -59,3 +59,11 @@ Workflow-level failures invoke the separately selected Error Trigger workflow.
 Handled provider error branches return safe results without necessarily invoking
 that trigger. No real error-workflow ID is exported. See
 [Build 3 reliability](BUILD_3_RELIABILITY.md) for import setup and trust boundaries.
+
+Build 3 live acceptance A?H is operator-confirmed. Gmail error output now splits
+into clear recipient rejection (confirmed failed_safe/not_sent/send_failed) and
+ambiguous delivery (needs_reconciliation/unknown, operator review, no resend).
+Existing sent/sending/unknown rows retain state and sent_at without writes. The
+shared handler false branch reaches Notification Outcome as disabled, with Always
+Output Data OFF on its IF. See the reliability document for conservative matching
+and the non-atomic Sheets/Gmail limitations.

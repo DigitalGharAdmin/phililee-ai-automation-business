@@ -9,7 +9,9 @@ export function validateErrorHandler(){
   assert.equal(wf.settings.saveDataErrorExecution,'none');assert.equal(wf.settings.saveManualExecutions,false);
   assert.equal(nodes.get('Error Trigger').type,'n8n-nodes-base.errorTrigger');
   assert.equal(nodes.get('Send Error Notification').retryOnFail,false);
-  const expected=[['Error Trigger','Normalize Error Context'],['Normalize Error Context','Prepare Privacy-Safe Error Notification'],['Prepare Privacy-Safe Error Notification','Notify Operator?'],['Notify Operator?','Send Error Notification'],['Notify Operator?','Notification Disabled'],['Send Error Notification','Notification Outcome'],['Send Error Notification','Notification Outcome']];
+  assert.equal(nodes.get('Notify Operator?').alwaysOutputData,false);
+  assert.equal(wf.connections['Notify Operator?'].main[1][0].node,'Notification Disabled');
+  const expected=[['Error Trigger','Normalize Error Context'],['Normalize Error Context','Prepare Privacy-Safe Error Notification'],['Prepare Privacy-Safe Error Notification','Notify Operator?'],['Notify Operator?','Send Error Notification'],['Notify Operator?','Notification Disabled'],['Send Error Notification','Notification Outcome'],['Send Error Notification','Notification Outcome'],['Notification Disabled','Notification Outcome']];
   assert.deepEqual(Object.entries(wf.connections).flatMap(([from,p])=>p.main.flatMap(l=>l.map(e=>[from,e.node]))),expected);
   for(const n of wf.nodes){assert(!n.credentials&&!n.webhookId);if(n.type.endsWith('.code'))assert(!/\brequire\s*\(|\bimport\s*\(/.test(n.parameters.jsCode));}
   assert.equal(nodes.get('Send Error Notification').parameters.message,'={{ $json.message }}');
@@ -19,9 +21,9 @@ export function validateErrorHandler(){
   assert(coreReadme.includes('Settings > Error Workflow')&&coreReadme.includes('MB05 Business Automation'));
 
   function run(event,{enable=false,replaceRecipient=true,outcome='success'}={}){
-    let name='Error Trigger',items=[{json:event}],sends=0,prepared,normalized;
+    let name='Error Trigger',items=[{json:event}],sends=0,prepared,normalized;const visited=[];
     for(let i=0;name&&i<12;i++){
-      const n=nodes.get(name);let port=0;
+      const n=nodes.get(name);visited.push(name);let port=0;
       const context={$input:{first:()=>items[0]},$json:items[0].json};
       const expr=v=>v.startsWith('={{')?vm.runInNewContext('('+v.slice(3,-2)+')',context,{timeout:1000}):v;
       if(n.type.endsWith('.code')){
@@ -46,6 +48,7 @@ export function validateErrorHandler(){
     assert(!JSON.stringify(prepared).includes('PRIVATE_MARKER'));
     assert(!JSON.stringify(items).includes('PRIVATE_MARKER'));
     assert.deepEqual(Object.keys(normalized).sort(),['execution_mode','failed_node','failure_category','workflow']);
+    assert(visited.includes('Notification Outcome'));
     return {sends,normalized,prepared,result:JSON.parse(JSON.stringify(items[0].json))};
   }
   const hostile={workflow:{name:'PRIVATE_MARKER'},execution:{lastNodeExecuted:'PRIVATE_MARKER',mode:'PRIVATE_MARKER',url:'PRIVATE_MARKER',id:'PRIVATE_MARKER',retryOf:'PRIVATE_MARKER',error:{message:'PRIVATE_MARKER',stack:'PRIVATE_MARKER'}},body:{email:'private@example.com',message:'PRIVATE_MARKER'},credentials:{value:'PRIVATE_MARKER'},config:{notifications_enabled:true}};
