@@ -132,5 +132,6 @@ check(()=>{
 });
 check(()=>{const c=copy();c.priority.default='high';const r=run({workflow:buildClient(c).core});assert.equal(r.result.priority,'high');});
 check(()=>{const c=copy();c.business_name="Example ' \\ $& Business";const r=run({workflow:buildClient(c).core});assert(r.history['Prepare Business Response'][0].json.body.includes(c.business_name));});
+export const clientCases=cases;
 console.log(`PASS: ${cases} client configuration/generation/regression scenarios. No live calls.`);
 console.log(`TESTS_COLLECTED: ${regressionCases+cases}; TESTS_PASSED: ${regressionCases+cases}; TESTS_FAILED: 0`);

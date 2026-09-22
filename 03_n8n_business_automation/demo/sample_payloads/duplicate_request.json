@@ -1,0 +1,11 @@
+{
+  "request_id": "00000000-0000-4000-8000-000000000502",
+  "customer_name": "Demo Contact",
+  "email": "customer@example.com",
+  "company": "Example Company",
+  "request_type": "sales",
+  "message": "Please share information about your services.",
+  "source": "webhook",
+  "priority_hint": "normal",
+  "requires_response": true
+}

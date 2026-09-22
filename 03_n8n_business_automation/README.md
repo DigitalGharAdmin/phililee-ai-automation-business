@@ -1,134 +1,156 @@
-# AI-Powered Business Automation System
+# n8n Business Automation
 
-MASTER BUILD 05, internal Build 4: Client Customization Layer.
-Build 1 defined the contracts. Build 2 provides an inactive sanitized workflow and
-offline verification. The operator has now completed the five Build 2 live acceptance
-scenarios; see [sanitized evidence](n8n/evidence/BUILD_2_MANUAL_ACCEPTANCE.md).
+A reusable n8n system for validating business inquiries, routing work, tracking
+requests in Google Sheets and sending policy-controlled acknowledgements. Optional
+AI assistance, duplicate protection and explicit failure states support consistent
+handling across client configurations.
 
-Small businesses often copy form submissions into spreadsheets, sort inquiries and
-write repetitive replies manually. This reusable package will standardize intake,
-classification, tracking and controlled responses for service businesses, agencies,
-local businesses and online businesses. Client configuration stays separate from rules.
+Start with the [client feature summary](docs/CLIENT_FEATURE_SUMMARY.md) or
+[case study](docs/PORTFOLIO_CASE_STUDY.md). Review the [evidence index](docs/EVIDENCE_INDEX.md)
+and [acceptance matrix](docs/FINAL_ACCEPTANCE_MATRIX.md) for verification details.
 
-## Commercial scope
+## What it automates
 
-The primary MVP processes customer/contact inquiries from a webhook or form,
-classifies them, routes work to a team and logs structured records in Google Sheets.
-Planned capabilities include optional AI summaries/classification suggestions,
-automatic acknowledgements only under explicit policy, internal notifications,
-approval-required responses and reporting-ready statuses. Email routing means
-routing submitted requests; unrestricted inbox access is not part of the service.
+- Authenticated intake, normalization and strict request validation.
+- Deterministic classification, priority and configurable queue routing for sales,
+  support, complaints, billing and general inquiries.
+- Google Sheets tracking with a 24-column Requests schema and request_id lookup.
+- Optional structured AI suggestions with deterministic fallback. Suggestions do
+  not override business rules or authorize outbound actions.
+- Client-specific plain-text acknowledgements under explicit policy.
+- Reuse of existing requests without resetting state or sending again.
+- Safe failure responses and operator reconciliation for uncertain delivery.
 
-The offer includes client-specific intake/configuration setup, routing rules,
-sanitized workflow templates, handoff documentation and acceptance testing. It does
-not replace ERP, authorize financial actions or promise unsupported CRM integrations,
-exactly-once delivery, zero failures or production readiness.
+Billing and complaints require review; approval resumption is not implemented.
+Routing labels identify work queues, not additional inbox integrations.
 
-## MVP and architecture
-
-Intake -> Normalize -> Validate -> deterministic classification -> optional AI
-assistance -> rule-based route -> Sheets log -> response/approval gate -> allowed
-email -> structured result. Invalid inputs cannot log or send. Duplicates cannot
-reset state or resend. AI suggestions cannot authorize actions.
-
-Planned stack: n8n, Google Sheets, Gmail and optional OpenAI. Build 1's validation
-uses only Node.js built-ins, with no package installation or network calls.
-
-- [Architecture and trust boundaries](docs/ARCHITECTURE.md)
-- [Deterministic rules](docs/BUSINESS_RULES.md)
-- [Exact contracts](docs/DATA_CONTRACT.md)
-- [Scope, acceptance and Build 2 handoff](docs/BUILD_1_SCOPE.md)
-- [n8n implementation plan](n8n/README.md)
-- [Synthetic demo fixtures](demo/README.md)
-
-## Reliability and privacy
-
-Email and AI default to disabled. Credentials belong in local n8n credentials or
-private runtime configuration, never committed exports. AI receives only minimized
-content; free text may still contain private data. Errors use fixed safe summaries.
-Sheets is lightweight tracking, not an atomic idempotency store. Concurrent
-delivery requires a stronger design before enabling production outbound actions.
-
-## Offline validation
-
-From this project directory run `node scripts/validate.mjs`.
-It validates fixtures and negative cases, required documentation, secret/privacy
-patterns and Git ignore behavior. It prints only paths/categories on scan failure.
-Pattern scanning supplements review and does not prove absence of every secret.
-
-Builds 1-3 are complete. Build 3 live acceptance A-H is operator-confirmed;
-[the acceptance record](n8n/evidence/BUILD_3_LIVE_ACCEPTANCE.md) records sanitized outcomes.
-Build 4: Client Customization Layer complete, including operator-reported live acceptance.
-Next: Build 5 - Demo + Portfolio Packaging (not started).
-No later master build is started. Other projects are unchanged.
-
-## Build 2 core workflow
-
-The [inactive core template](n8n/workflow_core/business_automation_core.sanitized.json)
-validates authenticated intake, applies deterministic rules, checks request_id,
-optionally requests AI assistance, logs to Sheets and gates fixed acknowledgements.
-Matching duplicates return stored state without writes or resends. Invalid input
-cannot call providers. Email and AI remain disabled by default. Billing/complaint
-responses remain pending; no approval-resumption workflow is implemented.
-
-Run `node n8n/tests/validate_workflows.mjs`: 102 core scenarios, 9 handler scenarios
-and 19 Build 1 contract checks (130 total). These use actual exported Code nodes and fake providers,
-not a live n8n runtime. Run `node scripts/build_core.mjs` and `node scripts/build_error_handler.mjs` to regenerate JSON from
-its reviewable source, then rerun validation. No dependency installation is needed.
-See [setup/schema/limits](n8n/workflow_core/README.md) and
-[contract reconciliations](docs/BUILD_2_NOTES.md).
-
-## Build 3 reliability
-
-Gmail attempts a send at most once per eligible execution and must return a bounded message ID before
-Mark Sent. Empty/error acknowledgements and final persistence failures require
-manual reconciliation. Existing records never trigger automatic resend. The shared
-error handler produces allowlisted metadata only; notifications default off.
-See [failure matrix, retry policy and reconciliation](docs/BUILD_3_RELIABILITY.md)
-and the [reusable live test plan](n8n/evidence/BUILD_3_MANUAL_TEST_PLAN.md).
-This repository synchronization used offline checks only; the operator performed the
-live tests separately. Clear recipient rejection now persists failed_safe/not_sent/
-send_failed before returning a safe result; uncertain outcomes require reconciliation.
-
-## Build 4 client customization
-
-Build 1: complete. Build 2: complete. Build 3: complete, including operator live
-acceptance. Build 4 implementation, offline checks and operator-reported live
-acceptance are complete. No Build 5 work is included.
-
-One stable core and error-handler builder consumes validated format-1 configuration.
-Business identity, routing, default priority, acknowledgement content/version, email
-policy, AI policy and operator notification policy are build-time data. Webhook
-input cannot override configuration. Canonical exports stay separate from generated
-client pairs; every export remains inactive with no credentials or real Sheet IDs.
-
-From this project directory:
+## Architecture
 
 ```text
+Webhook -> Normalize -> Validate -> Rules -> Duplicate check
+  Invalid / existing / conflict --------------------------> Respond
+  New -> Optional AI -> Reconcile rules -> Confirm Sheets log
+      -> Email eligibility -> No send / approval pending -> Respond
+      -> Confirm sending marker -> Gmail -> Confirm acceptance
+          -> Confirm sent state -------------------------> Respond
+          -> Clear rejection -> Confirm failed_safe -----> Respond
+          -> Uncertain outcome -> Reconciliation --------> Respond
+Unhandled execution failure -> assigned Error Handler
+  -> allowlisted metadata -> disabled notification / optional alert -> outcome
+```
+
+See the [full architecture](docs/ARCHITECTURE.md) for confirmation/error branches
+and the [data contract](docs/DATA_CONTRACT.md) for exact fields and statuses.
+
+## Reliability model
+
+AI and Sheets use three total attempts with 2000 ms waits. Gmail does not retry
+automatically. Confirmed clear rejection yields failed_safe / not_sent / send_failed.
+Ambiguous sends or unconfirmed state persistence yield needs_reconciliation / unknown /
+reconciliation_required. Operators investigate; replay never automatically resends.
+Existing sent, sending and unknown rows are reuse-only and retain their timestamps.
+
+These protections apply to sequential workflow states. Sheets/Gmail are not
+transactional and do not provide exactly-once delivery. See the
+[retry and reconciliation guide](docs/BUILD_3_RELIABILITY.md).
+
+## Client customization
+
+Validated client config -> stable generators -> inactive sanitized core/handler
+pair -> private credential and Sheet binding in n8n -> authorized acceptance.
+
+Configure identity, routing, default priority, email/AI policy, acknowledgement
+content/version and notification policy without editing core logic. Webhook input
+cannot override config. Real operator recipients are bound privately; example.com
+notification recipients remain blocked.
+
+| Demo client | Route | Defaults | Response version |
+| --- | --- | --- | --- |
+| support-demo | support -> support_desk | Email/AI/acknowledgements off | ack-v1 |
+| sales-demo | sales -> sales_team | Email/AI off; acknowledgement policy on | sales-ack-v1 |
+
+See [configuration fields](docs/CLIENT_CONFIGURATION.md) and
+[onboarding](docs/CLIENT_ONBOARDING.md).
+
+## Quick start
+
+Use Node.js 24 (validated locally); scripts use built-ins without package installation.
+From this project directory:
+
+```powershell
 node scripts/client_config.mjs config/client_config.support-demo.json
 node scripts/build_client_workflow.mjs config/client_config.support-demo.json
 node scripts/build_client_workflow.mjs config/client_config.sales-demo.json
-node n8n/tests/validate_clients.mjs
+node n8n/tests/validate_portfolio.mjs --show-demo
 ```
 
-The full suite passes 227 scenarios: 130 Build 1-3 checks plus 97 client config,
-generation and reliability scenarios. It uses fake providers only. Both demo pairs
-are committed for review; private configs and other generated pairs are ignored.
-Normal customization requires editing config and rebuilding, not changing core code.
-Real credential/document/recipient binding remains a private n8n onboarding step.
+These commands use fake providers and do not deploy or send anything. Generated
+pairs are in `n8n/generated/`. Follow onboarding before import: bind credentials
+privately, select Requests on every Sheets node and verify all mappings. Publish
+the authorized test handler first, assign/save it in the core, then publish the
+core and confirm webhook registration. Begin with a no-send test.
 
-See [configuration fields](docs/CLIENT_CONFIGURATION.md),
-[onboarding checklist](docs/CLIENT_ONBOARDING.md) and
-[completed live acceptance](n8n/evidence/BUILD_4_LIVE_ACCEPTANCE.md).
+Follow [demo scenarios](demo/DEMO_SCENARIOS.md) and the
+[presentation runbook](demo/DEMO_RUNBOOK.md). Synthetic example.com payloads are for
+offline demonstration, not live delivery.
 
-## MASTER BUILD 05 status
+## Live acceptance
+
+Operator-reported acceptance passed for:
+
+- [Build 2](n8n/evidence/BUILD_2_MANUAL_ACCEPTANCE.md): valid/invalid intake,
+  no-send, duplicate reuse and authorized Gmail delivery.
+- [Build 3](n8n/evidence/BUILD_3_LIVE_ACCEPTANCE.md): error handler, AI transport
+  failure, Sheets failure, clear/ambiguous sends and replay guards.
+- [Build 4](n8n/evidence/BUILD_4_LIVE_ACCEPTANCE.md): both client demos, custom
+  content, duplicates, disabled notifications and sanitized exports.
+
+Build 5 adds packaging and offline validation only. No new live provider actions
+or successful real OpenAI inference are claimed. Historical Build 2 Gmail retries
+were superseded by Build 3's no-retry policy. See
+[final validation](n8n/evidence/BUILD_5_FINAL_VALIDATION.md) for current totals.
+
+## Repository structure
+
+| Folder | Contents |
+| --- | --- |
+| config/ | Sanitized example, support and sales configurations |
+| scripts/ | Validators and deterministic generators |
+| n8n/workflow_core/, n8n/workflow_error_handler/ | Canonical inactive templates |
+| n8n/generated/ | Reviewed client-specific core/handler pairs |
+| n8n/tests/ | Actual Code-node execution with fake providers and static checks |
+| n8n/evidence/ | Sanitized historical acceptance and current validation |
+| demo/ | Presentation sequence, scenarios and synthetic payloads |
+| docs/ | Architecture, contracts, case study and delivery guides |
+
+## Security and privacy
+
+Secrets, OAuth material, Basic Auth values, real Sheet IDs and production contacts
+are excluded from sanitized exports. Credentials belong in n8n. Private configs,
+raw exports and .env files are ignored. Error notifications use fixed/allowlisted
+metadata; public summaries exclude raw provider errors. Redaction and scans have
+limits; deployment access and retention still need review.
+
+## Known limitations
+
+Sheets is demonstration persistence, not an atomic idempotency store. Serialize
+intake/operator changes; concurrent writes may race. Reconciliation is manual,
+fingerprints are non-cryptographic and approval resumption is deferred. Credentials,
+hosting, monitoring and live configuration are deployment duties. No measured ROI,
+guaranteed accuracy or production readiness is claimed. Use the
+[handoff checklist](docs/CLIENT_HANDOFF_CHECKLIST.md) and
+[production readiness checklist](docs/PRODUCTION_READINESS_CHECKLIST.md).
+
+## Portfolio status
+
+MASTER BUILD 05 - n8n Business Automation: COMPLETE.
 
 - Build 1 - Commercial Automation Scope + Architecture: complete
 - Build 2 - Core Business Automation Workflow: complete
 - Build 3 - Reliability + Error Handling: complete
 - Build 4 - Client Customization Layer: complete
-- Build 5 - Demo + Portfolio Packaging: NEXT, not started
+- Build 5 - Demo + Portfolio Packaging: complete
 
-The operator completed Build 4 live Tests A-H. This closure task only rebuilt and
-validated local artifacts; it performed no live actions. See the acceptance record
-for results and the onboarding guide for credential and publication safeguards.
+Final offline suite: 243 passed, 0 failed. Prior live acceptance remains documented
+separately. No subsequent master build has started; no push or live external action
+was performed during Build 5. Next: portfolio review and push preparation.

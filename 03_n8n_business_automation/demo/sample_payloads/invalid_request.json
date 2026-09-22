@@ -1,0 +1,11 @@
+{
+  "request_id": "invalid-id",
+  "customer_name": "Demo Contact",
+  "email": "customer@example.com",
+  "company": "Example Company",
+  "request_type": "sales",
+  "message": "Please share information about your services.",
+  "source": "webhook",
+  "priority_hint": "normal",
+  "requires_response": "true"
+}
