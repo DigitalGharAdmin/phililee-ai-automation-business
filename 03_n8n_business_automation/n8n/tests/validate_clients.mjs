@@ -57,6 +57,24 @@ function staticPair(pair,c){
 }
 for(const name of ['support-demo','sales-demo']){
   const c=loadConfig(new URL(`../../config/client_config.${name}.json`,import.meta.url)),pair=buildClient(c);
+  check(()=>{
+    const sales=name==='sales-demo',business=sales?'Example Sales Co':'Example Support Co';
+    assert.equal(c.client_id,name);assert.equal(c.business_name,business);
+    assert.deepEqual(c.features,{email_enabled:false,acknowledgement_policy:sales,ai_enabled:false,operator_notifications_enabled:false});
+    assert.equal(c.ai.model,'YOUR_OPENAI_MODEL');
+    assert.deepEqual(c.routing,{sales:sales?'sales_team':'sales_queue',support:sales?'support_queue':'support_desk',complaint:'review_queue',billing:'review_queue',general:'general_queue'});
+    assert.equal(c.email.response_version,sales?'sales-ack-v1':'ack-v1');
+    assert.equal(c.email.ack_subject,sales?'We received your sales inquiry':'We received your inquiry');
+    assert.equal(c.notifications.operator_recipient,'operator@example.com');
+    assert.equal(pair.core.name,`MB05 Business Automation - ${name} - Core Workflow`);
+    assert.equal(pair.handler.name,`MB05 Business Automation - ${name} - Error Handler`);
+    const r=run({workflow:pair.core,input:{...fixture.input,request_type:sales?'sales':'support'}});
+    assert.deepEqual(r.result,{request_id:fixture.input.request_id,accepted:true,classification:sales?'sales':'support',priority:'normal',route:sales?'sales_team':'support_desk',action:'log_only',status:'logged',logged:true,email_status:'disabled',result_summary:'recorded'});
+    assert.equal(r.writes,1);assert.equal(r.sent,0);assert.equal(r.aiCalls,0);
+    assert.equal(r.rows[0].response_version,sales?'sales-ack-v1':'ack-v1');
+    assert(r.history['Prepare Business Response'][0].json.body.includes(business));
+    assert(r.history['Prepare Business Response'][0].json.body.includes('This acknowledgement does not confirm any purchase, refund or service commitment.'));
+  });
   check(()=>{staticPair(pair,c);assert.deepEqual(buildClient(c),pair);
     assert.deepEqual(read(`../generated/business_automation_core.${name}.sanitized.json`),pair.core);
     assert.deepEqual(read(`../generated/business_automation_handler.${name}.sanitized.json`),pair.handler);
@@ -99,6 +117,12 @@ for(const name of ['support-demo','sales-demo']){
     if(r.aiBody)assert.equal(r.aiBody.model,model);
   });
 }
+check(()=>{
+  const paths=['support-demo','sales-demo'].map(name=>read(`../generated/business_automation_core.${name}.sanitized.json`).nodes.find(n=>n.name==='Webhook Intake').parameters.path);
+  assert.deepEqual(paths,['mb05-support-demo-intake','mb05-sales-demo-intake']);
+  assert.equal(new Set(paths).size,2);
+  for(const path of paths)assert.notEqual(path,baseline.nodes.find(n=>n.name==='Webhook Intake').parameters.path);
+});
 check(()=>{
   const c=copy();c.features.operator_notifications_enabled=true;
   const pair=buildClient(c);staticPair(pair,c);

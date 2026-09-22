@@ -56,9 +56,9 @@ It validates fixtures and negative cases, required documentation, secret/privacy
 patterns and Git ignore behavior. It prints only paths/categories on scan failure.
 Pattern scanning supplements review and does not prove absence of every secret.
 
-Builds 1?3 are complete. Build 3 live acceptance A?H is operator-confirmed;
+Builds 1-3 are complete. Build 3 live acceptance A-H is operator-confirmed;
 [the acceptance record](n8n/evidence/BUILD_3_LIVE_ACCEPTANCE.md) records sanitized outcomes.
-Build 4: Client Customization Layer implemented and verified offline; live acceptance planned.
+Build 4: Client Customization Layer complete, including operator-reported live acceptance.
 Next: Build 5 - Demo + Portfolio Packaging (not started).
 No later master build is started. Other projects are unchanged.
 
@@ -93,8 +93,8 @@ send_failed before returning a safe result; uncertain outcomes require reconcili
 ## Build 4 client customization
 
 Build 1: complete. Build 2: complete. Build 3: complete, including operator live
-acceptance. Build 4: implementation and offline checks complete; client live
-acceptance remains planned. No Build 5 work is included.
+acceptance. Build 4 implementation, offline checks and operator-reported live
+acceptance are complete. No Build 5 work is included.
 
 One stable core and error-handler builder consumes validated format-1 configuration.
 Business identity, routing, default priority, acknowledgement content/version, email
@@ -111,7 +111,7 @@ node scripts/build_client_workflow.mjs config/client_config.sales-demo.json
 node n8n/tests/validate_clients.mjs
 ```
 
-The full suite passes 224 scenarios: 130 Build 1?3 checks plus 94 client config,
+The full suite passes 227 scenarios: 130 Build 1-3 checks plus 97 client config,
 generation and reliability scenarios. It uses fake providers only. Both demo pairs
 are committed for review; private configs and other generated pairs are ignored.
 Normal customization requires editing config and rebuilding, not changing core code.
@@ -119,4 +119,16 @@ Real credential/document/recipient binding remains a private n8n onboarding step
 
 See [configuration fields](docs/CLIENT_CONFIGURATION.md),
 [onboarding checklist](docs/CLIENT_ONBOARDING.md) and
-[planned live acceptance](n8n/evidence/BUILD_4_MANUAL_TEST_PLAN.md).
+[completed live acceptance](n8n/evidence/BUILD_4_LIVE_ACCEPTANCE.md).
+
+## MASTER BUILD 05 status
+
+- Build 1 - Commercial Automation Scope + Architecture: complete
+- Build 2 - Core Business Automation Workflow: complete
+- Build 3 - Reliability + Error Handling: complete
+- Build 4 - Client Customization Layer: complete
+- Build 5 - Demo + Portfolio Packaging: NEXT, not started
+
+The operator completed Build 4 live Tests A-H. This closure task only rebuilt and
+validated local artifacts; it performed no live actions. See the acceptance record
+for results and the onboarding guide for credential and publication safeguards.

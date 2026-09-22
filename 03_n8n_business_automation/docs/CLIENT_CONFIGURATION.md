@@ -74,3 +74,11 @@ to generate the core and handler under `n8n/generated/`. The sales-demo command 
 its corresponding filename. Outputs are deterministic, inactive, and separate from
 canonical exports. Rebuilding the same client overwrites its generated pair only.
 Canonical regeneration uses the example config through the original builder commands.
+
+
+Build 4 live acceptance is operator-confirmed; see
+[the evidence](../n8n/evidence/BUILD_4_LIVE_ACCEPTANCE.md). Generated artifacts remain
+inactive and intentionally omit credential bindings, real Sheet IDs, OAuth material,
+Basic Auth secrets and production personal emails. Those are bound privately in
+n8n. Credential reconnection and saved/published workflow settings affect live
+operation without changing the sanitized configuration contract or generated logic.

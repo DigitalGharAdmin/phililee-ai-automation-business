@@ -1,4 +1,4 @@
-# Build 4 manual acceptance — planned, not executed
+# Build 4 manual acceptance - original plan and executed results
 
 All cases below require separate authorization and an isolated deployment. No live
 n8n, OpenAI, Gmail or Sheets action was performed during Build 4 implementation.
@@ -24,4 +24,29 @@ Inspect all 24 Sheets mappings after selecting the local sheet. Verify the selec
 error workflow and its disabled path ending in Notification Outcome. AI placeholder
 skips calls; any optional live AI test needs separate approval and private credentials.
 Restore all core flags and notifications to false after testing; retain private
-evidence outside Git. These planned cases are not claimed as PASS.
+evidence outside Git. The original planning letters above are retained for reference;
+the executed acceptance sequence below uses the operator's final A-H labels.
+
+## Executed acceptance results
+
+Operator-reported live acceptance A-H is complete. These labels refer to the final
+execution sequence, not a claim that every alternative in the original A-J plan
+was executed. See [sanitized live evidence](BUILD_4_LIVE_ACCEPTANCE.md).
+
+| Executed test | Result |
+| --- | --- |
+| A - Support import/config | PASS |
+| B - Support runtime | PASS |
+| C - Sales import/config | PASS |
+| D - Sales runtime | PASS |
+| E - Sales acknowledgement content | PASS |
+| F - Sales duplicate guard | PASS |
+| G - Error-handler client config | PASS |
+| H - Generated secret check | PASS |
+
+Support runtime required Sheets credential reconnection. Sales initially returned
+404 until core publication/production webhook registration was confirmed. The sales
+handler initially did not trigger until its Error Workflow assignment was saved and
+the core republished. All three were live setup/configuration issues, not generated
+workflow logic failures. Final reruns passed. Email was restored to false and the
+temporary intentional error removed. No live tests were rerun during repository closure.
