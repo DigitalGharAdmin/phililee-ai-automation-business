@@ -40,3 +40,7 @@ htmlcov/
 
 # Local dependency caches
 node_modules/
+
+# Temporary and backup artifacts
+*.tmp
+*.bak
