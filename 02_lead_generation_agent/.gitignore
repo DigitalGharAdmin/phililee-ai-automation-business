@@ -13,3 +13,9 @@ htmlcov/
 *.sqlite-*
 *.sqlite3
 *.sqlite3-*
+
+# Private credentials and unsanitized exports
+credentials/
+private/
+private_exports/
+raw_exports/

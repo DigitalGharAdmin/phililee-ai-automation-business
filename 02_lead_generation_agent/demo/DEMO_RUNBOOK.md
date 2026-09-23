@@ -1,13 +1,13 @@
 # Lead Agent portfolio demo runbook
 
-This is MASTER BUILD 04 internal Build 5. Do not start MASTER BUILD 05 here.
+This runbook presents the completed Lead Generation portfolio build.
 Default presentation uses synthetic local API calls, offline workflow simulation
 and existing sanitized manual acceptance evidence. No live action is required.
 
-1. Start the backend in PowerShell:
+1. From the repository root, start the backend in PowerShell:
 
    ```powershell
-   cd C:\Users\User\Documents\AI_Freelance_Business\02_lead_generation_agent
+   cd 02_lead_generation_agent
    $env:DATABASE_URL = "sqlite:///./demo_local.db"
    $env:OPENAI_API_KEY = ""
    .\.venv\Scripts\python.exe -m uvicorn app.api:app --reload

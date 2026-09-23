@@ -19,3 +19,12 @@ htmlcov/
 /docs/mb02_workflow_2/MB02 Workflow 2 - Gmail AI Classification.json
 /docs/MB02_Workflow_3/MB02 Workflow 3 - Form AI Email.json
 /docs/mb02_workflow_4/MB02 Shared Error Handler.json
+
+# Private credentials and unsanitized exports
+credentials/
+private/
+private_exports/
+raw_exports/
+
+# Local alternate implementation; never publish
+/app/api_build02_final.py

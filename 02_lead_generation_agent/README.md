@@ -34,8 +34,8 @@ Demo: [eight scenarios](demo/DEMO_SCENARIOS.md), [Windows runbook](demo/DEMO_RUN
 CRM state transitions, rejection, approval and repeat-send prevention using offline
 checks and the recorded live acceptance. Do not expose real inboxes or credentials.
 
-Roadmap: MASTER BUILD 04 internal Builds 1-5 are complete after the recorded checks.
-MASTER BUILD 05 is the next master step; no work on it is included here.
+Status: COMPLETE portfolio build. Internal Builds 1-5 are complete after recorded
+checks. See the [full portfolio](../README.md) for all three completed systems.
 
 ## Build 1 scope and architecture
 
@@ -213,7 +213,8 @@ are not verified. Commercial fit should be reviewed before a business decision.
 ## Roadmap position
 
 Internal Build 5: Reliability Tests, Demo Evidence, and Portfolio Packaging.
-Next master step: MASTER BUILD 05 - n8n Business Automation (not started).
+The companion [n8n Business Automation](../03_n8n_business_automation/README.md)
+is also a completed portfolio build.
 
 Build 4 live manual acceptance is complete; Build 5 covers reliability tests, demo
 evidence and portfolio packaging. Later production hardening may add transactional

@@ -30,3 +30,13 @@ htmlcov/
 
 # Local databases
 *.sqlite3
+
+# Runtime SQLite files and sidecars
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3-*
+
+# Local dependency caches
+node_modules/
